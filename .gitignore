@@ -11,6 +11,16 @@ env/
 .env.*
 !.env.example
 
+# AWS credentials and private key material
+.aws/
+aws-credentials*
+aws-config*
+credentials
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Test and tooling output
 .pytest_cache/
 .coverage

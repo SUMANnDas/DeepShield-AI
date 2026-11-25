@@ -4,20 +4,25 @@ DeepShield AI is a local research prototype for image and video media analysis. 
 
 ## Local setup
 
+The primary interface is the framework-free HTML, CSS, and JavaScript app in `frontend/vanilla/`. FastAPI serves the UI and API from one local origin. The launcher uses the existing project `.venv`; it does not install packages or change the machine execution policy.
+
 From the project root in PowerShell:
 
-    python --version
-    python -m venv .venv
-    .\.venv\Scripts\Activate.ps1
-    python -m pip install -r requirements-dev.txt
-    Copy-Item .env.example .env
-    python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+    .\start_deepshield.ps1
 
-The active interface uses framework-free HTML, CSS, and JavaScript. In a second PowerShell terminal from the project root, run:
+Open <http://127.0.0.1:8000>. API documentation is at <http://127.0.0.1:8000/docs>. Stop the server with Ctrl+C. The launcher expects `.venv\Scripts\python.exe` to exist and reports a clear error if it does not.
 
-    python -m http.server 5173 --bind 127.0.0.1 --directory frontend/vanilla
+The backend can also be started directly with the environment's Python:
 
-Open http://127.0.0.1:5173. API documentation is at http://127.0.0.1:8000/docs. The app reads .env with python-dotenv; environment variables supplied by the process take precedence.
+    .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+
+For frontend-only work, serve the vanilla files separately in a second PowerShell terminal (the backend must also be running):
+
+    .\.venv\Scripts\python.exe -m http.server 5173 --bind 127.0.0.1 --directory frontend/vanilla
+
+Then open <http://127.0.0.1:5173>. The default backend CORS allowlist includes this local development origin. The app reads `.env` with python-dotenv; process environment variables take precedence. Copy `.env.example` to `.env` only when local overrides are needed.
+
+For a fresh environment, create a separate `.venv` and install the CUDA-matched PyTorch/Torchvision builds before the remaining pinned project dependencies. Do not replace or modify the existing environment as part of application startup.
 
 ## Health endpoints
 
@@ -25,7 +30,7 @@ Open http://127.0.0.1:5173. API documentation is at http://127.0.0.1:8000/docs. 
 - GET /api/v1/health/ready reports that the initial API foundation has loaded.
 - /docs, /redoc, and /openapi.json are enabled in development by default and can be disabled with DEEPSHIELD_DOCS_ENABLED=false.
 
-The API also serves local image analysis, bounded video metadata/frame sampling, model-performance and system-health records, persistent analysis history, and JSON/printable reports. Video classification remains unavailable because there is no validated video checkpoint.
+The API also serves local image analysis, bounded video metadata/frame sampling, model-performance and system-health records, persistent analysis history, and JSON/printable reports. Video uploads are limited to 200 MB, 10 minutes, and 16 megapixels per frame; at most six frames are sampled and reduced to 320-pixel previews. Video classification remains unavailable because there is no validated video checkpoint.
 
 ## Tests
 
