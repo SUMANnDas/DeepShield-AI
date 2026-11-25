@@ -1,0 +1,21 @@
+{
+  "seed": "deepshield-phase2",
+  "ratios": {
+    "train": 0.8,
+    "validation": 0.1,
+    "test": 0.1
+  },
+  "group_field": "auto",
+  "label_field": "label",
+  "source_split_field": "source_split",
+  "source_split_map": {
+    "train": "train",
+    "training": "train",
+    "dev": "validation",
+    "valid": "validation",
+    "validation": "validation",
+    "eval": "test",
+    "evaluation": "test",
+    "test": "test"
+  }
+}

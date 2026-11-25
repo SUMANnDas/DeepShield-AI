@@ -1,0 +1,12 @@
+{
+  "seed": "cifake-v3-exact-hash-grouped-20261124",
+  "ratios": {
+    "train": 0.8,
+    "validation": 0.1,
+    "test": 0.1
+  },
+  "group_field": "auto",
+  "label_field": "label",
+  "source_split_field": "",
+  "source_split_map": {}
+}

@@ -1,0 +1,10 @@
+{
+  "target_size": [32, 32],
+  "image_extensions": [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"],
+  "face_detection_enabled": false,
+  "crop_faces": false,
+  "perceptual_hash_enabled": true,
+  "perceptual_hash_distance": 6,
+  "jpeg_quality": 95,
+  "normalization": "rgb_0_1"
+}

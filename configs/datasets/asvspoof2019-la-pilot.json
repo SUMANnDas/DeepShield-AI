@@ -1,0 +1,19 @@
+{
+  "audio_extensions": [".wav", ".flac"],
+  "target_sample_rate": 16000,
+  "channel_policy": "mono_average",
+  "segment_seconds": 4.0,
+  "overlap_seconds": 0.5,
+  "keep_short_final_segment": true,
+  "window_ms": 25.0,
+  "hop_ms": 10.0,
+  "fft_size": 512,
+  "mel_bins": 64,
+  "min_frequency": 20.0,
+  "max_frequency": 7600.0,
+  "pre_emphasis": 0.97,
+  "silence_rms_threshold": 0.001,
+  "skip_silence": false,
+  "write_audio_segments": true,
+  "write_log_mel": true
+}

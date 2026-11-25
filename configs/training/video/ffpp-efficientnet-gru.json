@@ -1,0 +1,1 @@
+{"task":"video_temporal_facial_manipulation","dataset":"FaceForensics++ c23 (not acquired)","architecture":"efficientnet-b0-bigru-attention","weights":null,"input_size":224,"max_frames":12,"hidden_dim":256,"gru_layers":2,"bidirectional":true,"dropout":0.3,"max_videos":100,"compression":"c23","seed":42,"batch_size":2,"epochs":20,"learning_rate":0.0001,"mixed_precision":"off"}

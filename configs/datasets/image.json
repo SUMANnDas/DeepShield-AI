@@ -1,0 +1,14 @@
+{
+  "target_size": [256, 256],
+  "image_extensions": [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"],
+  "face_detection_enabled": true,
+  "face_min_size": 32,
+  "face_scale_factor": 1.1,
+  "face_min_neighbors": 5,
+  "crop_faces": false,
+  "face_margin_ratio": 0.15,
+  "perceptual_hash_enabled": true,
+  "perceptual_hash_distance": 6,
+  "jpeg_quality": 95,
+  "normalization": "rgb_0_1"
+}

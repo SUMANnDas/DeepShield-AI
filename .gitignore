@@ -1,0 +1,37 @@
+# Python bytecode and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Test and tooling output
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Local data, uploads, generated reports, and model artifacts
+storage/
+uploads/
+datasets/raw/
+datasets/processed/
+models/checkpoints/
+models/pretrained/
+experiments/runs/
+reports/generated/
+
+# Local frontend dependencies and generated build output
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Dataset-derived manifests and interim media remain local
+datasets/manifests/
+datasets/interim/

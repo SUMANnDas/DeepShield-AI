@@ -1,0 +1,6 @@
+# Application-specific dependencies. PyTorch/Torchvision are already supplied by
+# this project's CUDA-enabled environment and must be installed from the matching
+# official PyTorch wheel channel when building a new environment.
+-r requirements-datasets.txt
+python-multipart==0.0.34
+Pillow==13.0.0

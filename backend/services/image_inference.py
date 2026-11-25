@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+from PIL import Image, UnidentifiedImageError
+
+from scripts.training.image.checkpoint import load_checkpoint
+from scripts.training.image.data import INDEX_TO_LABEL
+from scripts.training.image.models import build_model
+from scripts.training.image.transforms import ImageTransform
+from scripts.training.image.utils import select_device
+from scripts.training.image.train import _load_config
+
+from backend.services.model_registry import MODELS, model_paths
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_PIXELS = 40_000_000
+SUPPORTED_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+
+class ImageInputError(ValueError):
+    pass
+
+
+class ImageInferenceService:
+    """Loads one verified CIFAKE checkpoint at a time to stay within VRAM limits."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._loaded_id: str | None = None
+        self._model: torch.nn.Module | None = None
+        self._transform: ImageTransform | None = None
+        self._device = torch.device("cpu")
+        self._identifier: str | None = None
+
+    @staticmethod
+    def validate_image(data: bytes, filename: str, declared_mime: str | None) -> tuple[Image.Image, dict[str, Any]]:
+        if not data:
+            raise ImageInputError("The uploaded file is empty.")
+        if len(data) > MAX_IMAGE_BYTES:
+            raise ImageInputError("Image exceeds the 10 MB upload limit.")
+        suffix = Path(filename or "").suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise ImageInputError("Use a JPEG, PNG, or WebP image.")
+        if declared_mime and declared_mime.lower() not in {"image/jpeg", "image/png", "image/webp", "application/octet-stream"}:
+            raise ImageInputError("The declared content type is not an accepted image type.")
+        expected_formats = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP"}
+        try:
+            with Image.open(__import__("io").BytesIO(data)) as probe:
+                actual_format = (probe.format or "").upper()
+                width, height = probe.size
+                if actual_format not in SUPPORTED_FORMATS:
+                    raise ImageInputError("The file content is not a supported image format.")
+                if expected_formats[suffix] != actual_format:
+                    raise ImageInputError("The filename extension does not match the image content.")
+                expected_mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}[actual_format]
+                if declared_mime and declared_mime.lower() not in {expected_mime, "application/octet-stream"}:
+                    raise ImageInputError("The declared content type does not match the image content.")
+                if width < 1 or height < 1 or width * height > MAX_IMAGE_PIXELS:
+                    raise ImageInputError("Image dimensions are invalid or exceed the 40 megapixel limit.")
+                probe.verify()
+            with Image.open(__import__("io").BytesIO(data)) as image:
+                image.load()
+                rgb = image.convert("RGB")
+        except ImageInputError:
+            raise
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise ImageInputError("The uploaded file is corrupt or cannot be decoded as an image.") from exc
+        return rgb, {"format": actual_format, "width": width, "height": height, "bytes": len(data)}
+
+    def _load(self, model_id: str) -> None:
+        if model_id not in MODELS:
+            raise KeyError(model_id)
+        if self._loaded_id == model_id and self._model is not None:
+            return
+        self._model = None
+        self._transform = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        config_path, run_dir, checkpoint_path, _ = model_paths(model_id)
+        # The run snapshot is immutable and authoritative. The top-level training
+        # config may have changed after this checkpoint was produced.
+        snapshot_path = run_dir / "config-snapshot.json"
+        if not snapshot_path.is_file():
+            raise RuntimeError("The checkpoint run is missing its configuration snapshot.")
+        config = _load_config(snapshot_path)
+        checkpoint = load_checkpoint(checkpoint_path, map_location="cpu")
+        canonical_config = json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        expected_hash = hashlib.sha256(canonical_config).hexdigest()
+        if checkpoint.get("configuration_sha256") != expected_hash:
+            raise RuntimeError("Checkpoint configuration does not match its run snapshot.")
+        if config.get("architecture") != MODELS[model_id]["architecture"]:
+            raise RuntimeError("The run snapshot architecture does not match the selected model.")
+        model = build_model(str(config["architecture"]))
+        model.load_state_dict(checkpoint["model_state"], strict=True)
+        norm = json.loads((run_dir / "normalization.json").read_text(encoding="utf-8"))
+        device = select_device("auto")
+        model.to(device).eval()
+        self._model = model
+        self._transform = ImageTransform(norm["mean"], norm["std"], training=False)
+        self._device = device
+        self._loaded_id = model_id
+        self._identifier = f"{config['architecture']}:{MODELS[model_id]['run_id']}:epoch-{checkpoint['epoch']}"
+
+    def predict(self, model_id: str, image: Image.Image) -> dict[str, Any]:
+        with self._lock:
+            self._load(model_id)
+            assert self._model is not None and self._transform is not None
+            width, height = image.size
+            resized = image.resize((32, 32), Image.Resampling.BILINEAR)
+            array = np.asarray(resized, dtype=np.uint8)
+            tensor = self._transform(array).unsqueeze(0).to(self._device)
+            start = time.perf_counter()
+            with torch.inference_mode():
+                probs = torch.softmax(self._model(tensor).float(), dim=1)[0]
+                if self._device.type == "cuda":
+                    torch.cuda.synchronize(self._device)
+            elapsed = (time.perf_counter() - start) * 1000
+            return {
+                "predicted_label": INDEX_TO_LABEL[int(probs.argmax().item())],
+                "real_probability": float(probs[0].item()),
+                "fake_probability": float(probs[1].item()),
+                "confidence_score": float(probs.max().item()),
+                "confidence_calibrated": False,
+                "model_id": model_id,
+                "model_identifier": self._identifier,
+                "device": str(self._device),
+                "inference_duration_ms": round(elapsed, 3),
+                "preprocessing": {"original_width": width, "original_height": height, "model_input": "32x32 RGB; resized with bilinear interpolation"},
+            }
+

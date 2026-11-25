@@ -1,0 +1,19 @@
+# Dataset Rights and Access Register
+
+This register distinguishes the dataset files from the associated source-code license. Dataset terms must be recorded for each exact version and download date before acquisition or use.
+
+| Dataset | Verified access / rights status | Required action before acquisition |
+|---|---|---|
+| GenImage | Project terms state CC BY-NC-SA 4.0 plus additional dataset terms, and prohibit commercial use of data or derivatives. | Accept and archive the terms version. Do not plan product training from this source without separate written clearance. |
+| CIFAKE v3 (acquired 2026-11-24) | Kaggle's API license field is "Other (specified in description)," and its v3 description explicitly states the dataset is under the same MIT license as CIFAR-10. The author repository states the same. | Version 3 downloaded; retain the [official record snapshot](../../datasets/raw/images/CIFAKE-v3/kaggle-record-v3-snapshot.json), [acquisition record](../../datasets/raw/images/CIFAKE-v3/acquisition-record.json), and archive hash. Required attributions: CIFAKE/Bird & Lotfi (2024) and CIFAR-10/Krizhevsky & Hinton (2009). Check constituent terms again before redistribution or downstream use. |
+| FaceForensics++ | Request-gated; the signed terms restrict the database to non-commercial research and education. | Obtain approval and acceptance of the TUM terms before download. Do not redistribute media or derived crops unless the terms expressly allow it. |
+| Celeb-DF | Author request forms and a separate Terms to Use govern access. A general open data license was not verified. | Read and retain the terms provided during approval; verify any restrictions on derivatives, model weights, and sharing. |
+| ForgeryNet | Repository says the software is restricted to non-commercial research/education. That notice does not by itself establish the data-file license. | Obtain the dataset-specific terms from the project release and distinguish them from repository software licensing. |
+| DeeperForensics-1.0 | Download requires reading the provided Terms of Use and an approved request. | Review signed terms before requesting. The official page says the FF++ target real videos are not bundled. |
+| DFDC | Meta access process requires AWS account, IAM user/access keys, and account number. The public dataset page does not state a simple license grant for the files. | Review the click-through and AWS/Kaggle terms when registering. Do not expose or store AWS credentials in this repository. |
+| ASVspoof 2019 | The DataShare LICENSE_text grants ODC Attribution terms for the database. It states that individual contents may have separate copyright, privacy, or personality rights not covered by the database license. | Review the exact LICENSE_text and speech-content rights for the selected LA release before use; retain attribution and do not infer content permissions from the database license alone. |
+| ASVspoof 2021 | Organizers state ODC Attribution for the challenge databases. Evaluation keys and metadata are separately provided. | Attribute the dataset and preserve protocol/key versions; do not tune on final evaluation data. |
+| FoR | York University page publishes several archives but does not clearly identify a dataset license in the inspected page. | Confirm rights with the provider before use or redistribution. |
+| WaveFake v1.2.0 | Zenodo record states CC BY-SA 4.0. | Preserve attribution and share-alike obligations; review the record's exact license and version. |
+
+This register is research planning, not legal advice. A license decision applies to the exact data release and use case, including model weights and derived features. CIFAKE v3 is the only acquired dataset. FaceForensics++ remains request-gated and cannot be acquired until provider access is granted and the user separately approves its download; ASVspoof also awaits separate approval.

@@ -1,0 +1,1 @@
+{"task":"video_frame_facial_manipulation","dataset":"FaceForensics++ c23 (not acquired)","architecture":"efficientnet-b0-frame","weights":null,"input_size":224,"max_videos":100,"max_frames_per_video":12,"max_face_crops_per_video":12,"compression":"c23","seed":42,"batch_size":8,"epochs":20,"learning_rate":0.0001}

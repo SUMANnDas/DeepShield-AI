@@ -1,0 +1,12 @@
+{
+  "seed": "cifake-v3-perceptual-groups-20261124",
+  "ratios": {
+    "train": 0.8,
+    "validation": 0.1,
+    "test": 0.1
+  },
+  "group_field": "duplicate_group_id",
+  "label_field": "label",
+  "source_split_field": "",
+  "source_split_map": {}
+}

@@ -1,0 +1,8 @@
+# Optional dataset tooling. This file is a declaration only; Phase 2 does not install it.
+-r requirements.txt
+numpy>=1.26,<3
+scipy>=1.11,<2
+opencv-python-headless>=4.8,<5
+
+# Required to decode FLAC and other libsndfile-supported formats; WAV PCM works without it.
+soundfile>=0.12,<1
