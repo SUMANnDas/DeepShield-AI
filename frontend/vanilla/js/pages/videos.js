@@ -20,7 +20,7 @@ function metadataTiles(metadata) {
 export async function renderVideoAnalysis(root, { api }) {
   const system = await api.get('/system')
   const fileInput = el('input', { className: 'hidden-input', type: 'file', accept: 'video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.avi,.mov,.mkv,.webm', id: 'video-file' })
-  const upload = el('label', { className: 'upload-zone', htmlFor: 'video-file' }, icon('upload', 26), el('strong', {}, 'Choose a video for bounded inspection'), el('p', {}, 'MP4, AVI, MOV, MKV, or WebM · up to 200 MB'), el('span', { className: 'button button-secondary button-small' }, 'Choose video'), fileInput)
+  const upload = el('label', { className: 'upload-zone', htmlFor: 'video-file' }, icon('upload', 26), el('strong', {}, 'Choose a video for bounded inspection'), el('p', {}, 'MP4, AVI, MOV, MKV, or WebM · up to 200 MB · up to 10 minutes · up to 16 megapixels per frame'), el('span', { className: 'button button-secondary button-small' }, 'Choose video'), fileInput)
   const preview = el('div', { className: 'hidden' })
   const error = el('p', { className: 'settings-error', role: 'alert' })
   const progress = el('div', { className: 'hidden' }, el('div', { className: 'progress-line' }, el('span')), el('p', { className: 'help-text' }, 'Inspecting metadata and sampling up to six frames locally…'))
@@ -67,8 +67,8 @@ export async function renderVideoAnalysis(root, { api }) {
       busy = false; run.disabled = !selectedFile; run.querySelector('span').textContent = 'Inspect video'; progress.classList.add('hidden')
     }
   })
-  root.append(pageTitle('Video forensics', 'Video analysis', 'Inspect container metadata and bounded frame samples. This workflow does not classify manipulation.'),
+  root.append(pageTitle('Video forensics', 'Video analysis', 'Video metadata and frame inspection are available. Validated video deepfake classification is not currently available.'),
     notice('Experimental processing only', `${system.video_prediction_status || 'No validated video checkpoint is registered.'} This screen will never invent a REAL or MANIPULATED result.`, 'warning'),
-    el('section', { className: 'grid grid-2', style: { marginTop: '15px' } }, card(el('div', { className: 'card-header' }, el('div', {}, el('h2', {}, 'Inspect a video'), el('p', {}, 'The upload is removed after temporary processing. Sampling is capped at six frames.'))), upload, error, progress, run, preview), result))
+    el('section', { className: 'grid grid-2', style: { marginTop: '15px' } }, card(el('div', { className: 'card-header' }, el('div', {}, el('h2', {}, 'Inspect a video'), el('p', {}, 'The upload is removed after temporary processing. Sampling is capped at six 320-pixel previews.'))), upload, error, progress, run, preview), result))
   return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
 }

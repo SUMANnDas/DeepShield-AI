@@ -34,6 +34,8 @@ const RENDERERS = {
 const host = document.querySelector('#app')
 let activeCleanup = null
 let renderToken = 0
+let backendCheckPending = false
+const BACKEND_HEALTH_INTERVAL_MS = 10_000
 const nav = el('nav', { className: 'side-nav', 'aria-label': 'Main navigation' })
 const page = el('main', { id: 'main-content', className: 'main-content', tabindex: '-1' })
 const backendStatus = el('span', { className: 'connection-status', role: 'status' }, el('i', { className: 'status-dot' }), 'Checking backend')
@@ -70,6 +72,8 @@ function updateNavigation(route) {
 }
 
 async function checkBackend() {
+  if (backendCheckPending) return
+  backendCheckPending = true
   const api = createApiClient()
   const docsLink = document.querySelector('#api-docs-link')
   if (docsLink) docsLink.href = `${api.baseUrl.replace(/\/api\/v1\/?$/, '')}/docs`
@@ -82,6 +86,8 @@ async function checkBackend() {
     backendStatus.classList.remove('connected')
     backendStatus.classList.add('disconnected')
     backendStatus.lastChild.textContent = 'Backend unavailable'
+  } finally {
+    backendCheckPending = false
   }
 }
 
@@ -112,6 +118,10 @@ window.addEventListener('hashchange', render)
 window.addEventListener('storage', (event) => {
   if (event.key === 'deepshield.apiBase') { checkBackend(); render() }
 })
+window.addEventListener('focus', checkBackend)
+window.setInterval(() => {
+  if (document.visibilityState !== 'hidden') checkBackend()
+}, BACKEND_HEALTH_INTERVAL_MS)
 if (!location.hash) location.hash = '#/dashboard'
 checkBackend()
 render()

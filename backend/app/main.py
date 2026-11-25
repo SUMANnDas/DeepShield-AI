@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.app import __version__
 from backend.app.api.router import build_api_router
@@ -16,6 +19,7 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
+VANILLA_FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "vanilla"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -49,6 +53,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = app_settings
+
+    # The framework-free frontend is the primary local interface. Serving it
+    # from FastAPI keeps the default launch workflow same-origin and simple.
+    application.mount("/css", StaticFiles(directory=VANILLA_FRONTEND / "css"), name="vanilla-css")
+    application.mount("/js", StaticFiles(directory=VANILLA_FRONTEND / "js"), name="vanilla-js")
     application.include_router(build_api_router(app_settings.api_prefix))
     origins = [value.strip() for value in os.getenv("DEEPSHIELD_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if value.strip()]
     application.add_middleware(
@@ -60,8 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     @application.get("/", include_in_schema=False)
-    def root() -> dict[str, str]:
-        return {"service": app_settings.app_name, "status": "ok"}
+    def root() -> FileResponse:
+        return FileResponse(VANILLA_FRONTEND / "index.html", media_type="text/html")
 
     return application
 

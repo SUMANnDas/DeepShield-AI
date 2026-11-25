@@ -1,5 +1,23 @@
-export const DEFAULT_API_BASE = 'http://127.0.0.1:8000/api/v1'
+const API_PREFIX = '/api/v1'
+
+function defaultApiBase() {
+  if (typeof globalThis.location !== 'undefined') {
+    try {
+      const current = new URL(globalThis.location.href)
+      const hostname = current.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+      if (['127.0.0.1', 'localhost', '::1'].includes(hostname) && current.port === '8000') {
+        return `${current.origin}${API_PREFIX}`
+      }
+    } catch {
+      // Fall back to the documented local backend URL outside a browser.
+    }
+  }
+  return `http://127.0.0.1:8000${API_PREFIX}`
+}
+
+export const DEFAULT_API_BASE = defaultApiBase()
 export const API_BASE_STORAGE_KEY = 'deepshield.apiBase'
+export const REQUEST_TIMEOUT_MS = 120_000
 
 export function normalizeApiBase(value) {
   let url
@@ -34,23 +52,38 @@ export function saveApiBase(value, storage = globalThis.localStorage) {
   return normalized
 }
 
-export function createApiClient({ baseUrl = storedApiBase(), fetchImpl = globalThis.fetch } = {}) {
+export function createApiClient({ baseUrl = storedApiBase(), fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const base = normalizeApiBase(baseUrl)
 
   async function request(path, init = {}) {
     const endpoint = `${base}/${String(path).replace(/^\/+/, '')}`
     let response
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      response = await fetchImpl(endpoint, { ...init, headers: { Accept: 'application/json', ...init.headers } })
-    } catch {
+      response = await fetchImpl(endpoint, {
+        ...init,
+        signal: controller.signal,
+        headers: { Accept: 'application/json', ...init.headers },
+      })
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('The local backend request timed out. Check the server and retry.')
+      }
       throw new Error('Cannot reach the local DeepShield backend. Start the API and try again.')
+    } finally {
+      clearTimeout(timeout)
     }
     const contentType = response.headers?.get?.('content-type') || ''
     let payload
-    if (contentType.includes('application/json')) {
-      payload = await response.json()
-    } else {
-      payload = await response.text()
+    try {
+      if (contentType.includes('application/json')) {
+        payload = await response.json()
+      } else {
+        payload = await response.text()
+      }
+    } catch {
+      throw new Error('The local backend returned an unreadable response.')
     }
     if (!response.ok) {
       const detail = payload && typeof payload === 'object' ? payload.detail : payload

@@ -49,11 +49,27 @@ class HealthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ready")
 
-    def test_root_route_is_available(self) -> None:
+    def test_root_serves_the_primary_vanilla_frontend(self) -> None:
         response = self.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"service": "DeepShield Test", "status": "ok"})
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertIn("DeepShield AI", response.text)
+        self.assertIn("./css/app.css", response.text)
+        self.assertIn("./js/app.js", response.text)
+
+    def test_primary_frontend_static_assets_are_served(self) -> None:
+        css = self.get("/css/app.css")
+        script = self.get("/js/app.js")
+        dashboard = self.get("/js/pages/dashboard.js")
+
+        self.assertEqual(css.status_code, 200)
+        self.assertIn("text/css", css.headers["content-type"])
+        self.assertIn("--bg:", css.text)
+        self.assertEqual(script.status_code, 200)
+        self.assertIn("javascript", script.headers["content-type"])
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("Forensics dashboard", dashboard.text)
 
     def test_openapi_documentation_is_available(self) -> None:
         response = self.get("/openapi.json")

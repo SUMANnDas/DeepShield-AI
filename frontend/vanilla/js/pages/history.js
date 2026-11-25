@@ -40,11 +40,14 @@ export async function renderHistory(root, { api }) {
   const total = el('span', { className: 'help-text' }, 'Loading…')
   const list = el('div', { className: 'grid' })
   let timer = null
+  let active = true
   async function load() {
+    if (!active) return
     list.replaceChildren(el('div', { className: 'loading-state' }, el('span', { className: 'spinner' }), 'Loading saved analyses…'))
     try {
       const params = new URLSearchParams({ query: search.value.trim(), media_type: type.value, limit: '500' })
       const data = await api.get(`/history?${params.toString()}`)
+      if (!active) return
       const start = from.value ? new Date(`${from.value}T00:00:00`).getTime() : -Infinity
       const end = to.value ? new Date(`${to.value}T23:59:59.999`).getTime() : Infinity
       const items = (data.items || []).filter((item) => {
@@ -58,6 +61,7 @@ export async function renderHistory(root, { api }) {
         list.replaceChildren(...items.map((item) => recordCard(item, api)))
       }
     } catch (error) {
+      if (!active) return
       list.replaceChildren(el('div', { className: 'error-panel', role: 'alert' }, icon('alert', 20), el('div', {}, el('h2', {}, 'History is unavailable'), el('p', {}, error.message))))
       total.textContent = 'Could not load records'
     }
@@ -68,4 +72,8 @@ export async function renderHistory(root, { api }) {
     card(el('div', { className: 'toolbar' }, search, type, el('label', { className: 'field' }, el('span', { className: 'field-label' }, 'From'), from), el('label', { className: 'field' }, el('span', { className: 'field-label' }, 'To'), to), total)),
     el('section', { className: 'grid', style: { marginTop: '14px' } }, list))
   await load()
+  return () => {
+    active = false
+    clearTimeout(timer)
+  }
 }

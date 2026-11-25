@@ -36,3 +36,15 @@ test('sends multipart requests to the local backend and parses error details', a
   const broken = createApiClient({ baseUrl: DEFAULT_API_BASE, fetchImpl: async () => ({ ok: false, status: 415, headers: { get: () => 'application/json' }, json: async () => ({ detail: 'Unsupported image' }) }) })
   await assert.rejects(broken.postForm('/analysis/images', form), /Unsupported image/)
 })
+
+test('reports request timeouts clearly', async () => {
+  const fetchImpl = async (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+    }, { once: true })
+  })
+  const api = createApiClient({ baseUrl: DEFAULT_API_BASE, fetchImpl, timeoutMs: 5 })
+  await assert.rejects(api.get('/health/live'), /request timed out/i)
+})
