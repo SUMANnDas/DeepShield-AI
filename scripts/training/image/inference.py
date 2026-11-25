@@ -8,32 +8,38 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
-import cv2
+import hashlib
 import numpy as np
 import torch
 from PIL import Image
 
 from scripts.training.image.checkpoint import load_checkpoint
-from scripts.training.image.data import INDEX_TO_LABEL, EXPECTED_SIZE
+from scripts.training.image.data import INDEX_TO_LABEL
 from scripts.training.image.experiment import CHECKPOINT_ROOT, PROJECT_ROOT
 from scripts.training.image.models import build_model
+from scripts.training.image.preprocessing import prepare_model_rgb
 from scripts.training.image.train import _load_config
 from scripts.training.image.transforms import ImageTransform
 from scripts.training.image.utils import select_device
 
 
-def _image_to_rgb(image: str | Path | Image.Image) -> np.ndarray:
+def _image_to_rgb(image: str | Path | Image.Image, transform: ImageTransform) -> tuple[np.ndarray, dict[str, object]]:
     if isinstance(image, Image.Image):
-        rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+        source = image
+        prepared, metadata = prepare_model_rgb(
+            source,
+            size=32,
+            fill_rgb=tuple(round(float(value) * 255) for value in transform.mean.flatten().tolist()),
+        )
     else:
         path = Path(image)
-        bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
-        if bgr is None:
-            raise ValueError(f"Could not read image: {path}")
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    if rgb.shape[:2] != (EXPECTED_SIZE[1], EXPECTED_SIZE[0]):
-        raise ValueError(f"Expected a 32x32 input image, got {rgb.shape[1]}x{rgb.shape[0]}")
-    return np.ascontiguousarray(rgb)
+        with Image.open(path) as source:
+            prepared, metadata = prepare_model_rgb(
+                source,
+                size=32,
+                fill_rgb=tuple(round(float(value) * 255) for value in transform.mean.flatten().tolist()),
+            )
+    return prepared, metadata
 
 
 def predict_images(
@@ -47,7 +53,7 @@ def predict_images(
     results: list[dict[str, Any]] = []
     model.eval()
     for image in images:
-        rgb = _image_to_rgb(image)
+        rgb, preparation = _image_to_rgb(image, transform)
         tensor = transform(rgb).unsqueeze(0).to(device)
         start = time.perf_counter()
         with torch.inference_mode():
@@ -58,11 +64,24 @@ def predict_images(
         real_probability = float(probabilities[0].item())
         fake_probability = float(probabilities[1].item())
         predicted_index = int(probabilities.argmax().item())
+        predicted_label = INDEX_TO_LABEL[predicted_index]
+        native_resolution = preparation["source_width"] == 32 and preparation["source_height"] == 32
         results.append({
-            "predicted_label": INDEX_TO_LABEL[predicted_index],
+            "predicted_label": predicted_label,
             "real_probability": real_probability,
             "fake_probability": fake_probability,
             "confidence": max(real_probability, fake_probability),
+            "assessment": {
+                "status": "model_indication" if native_resolution else "inconclusive",
+                "decision": predicted_label if native_resolution else "INCONCLUSIVE",
+                "raw_model_label": predicted_label,
+                "reason": (
+                    "The source image is 32x32, matching CIFAKE's training resolution. This remains a CIFAKE-specific model indication."
+                    if native_resolution
+                    else "The source image is not 32x32. Its resized model score is outside the validated CIFAKE resolution domain."
+                ),
+            },
+            "preprocessing": preparation,
             "model_identifier": model_identifier,
             "inference_duration_ms": duration_ms,
             "calibrated_forensic_certainty": False,
@@ -71,18 +90,29 @@ def predict_images(
 
 
 def load_for_inference(config_path: Path, run_dir: Path) -> tuple[torch.nn.Module, ImageTransform, torch.device, str]:
-    config = _load_config(Path(config_path))
     run_dir = Path(run_dir).resolve()
     run_id = run_dir.name
     checkpoint_dir = CHECKPOINT_ROOT / run_id
+    snapshot_path = run_dir / "config-snapshot.json"
+    if not snapshot_path.is_file():
+        raise FileNotFoundError("The checkpoint run is missing its configuration snapshot.")
+    config = _load_config(snapshot_path)
     with (run_dir / "best-checkpoint-history.jsonl").open("r", encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle if line.strip()]
     if not rows:
         raise FileNotFoundError("No best validation checkpoint has been recorded")
-    checkpoint_path = PROJECT_ROOT / rows[-1]["checkpoint"]
-    if checkpoint_path.parent.resolve() != checkpoint_dir.resolve():
+    checkpoint_path = (PROJECT_ROOT / rows[-1]["checkpoint"]).resolve()
+    if checkpoint_path.parent != checkpoint_dir.resolve():
         raise ValueError("Checkpoint is outside the run-specific checkpoint directory")
     state = load_checkpoint(checkpoint_path, map_location="cpu")
+    if int(state["epoch"]) != int(rows[-1]["epoch"]):
+        raise ValueError("Selected checkpoint epoch does not match best validation history")
+    canonical = json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    expected_hash = hashlib.sha256(canonical).hexdigest()
+    if state.get("configuration_sha256") != expected_hash:
+        raise ValueError("Checkpoint configuration does not match its run snapshot")
+    if config.get("architecture") not in {"resnet50", "efficientnet-b0", "vit-small"}:
+        raise ValueError("Unsupported architecture in checkpoint run snapshot")
     device = select_device(str(config.get("device", "auto")))
     model = build_model(str(config["architecture"]))
     model.load_state_dict(state["model_state"])

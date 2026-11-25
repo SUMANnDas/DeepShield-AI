@@ -31,14 +31,17 @@ class ImageInferenceTests(unittest.TestCase):
         self.assertEqual(result["model_identifier"], "synthetic:test")
         self.assertGreaterEqual(result["inference_duration_ms"], 0.0)
 
-    def test_non_32_input_is_rejected(self) -> None:
+    def test_non_32_input_is_preserved_and_marked_inconclusive(self) -> None:
         image = Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8), mode="RGB")
-        with self.assertRaisesRegex(ValueError, "Expected a 32x32"):
-            predict_images(
-                torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(3 * 32 * 32, 2)), [image],
-                transform=ImageTransform((0.5,) * 3, (0.5,) * 3),
-                model_identifier="synthetic:test", device=torch.device("cpu"),
-            )
+        result = predict_images(
+            torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(3 * 32 * 32, 2)), [image],
+            transform=ImageTransform((0.5,) * 3, (0.5,) * 3),
+            model_identifier="synthetic:test", device=torch.device("cpu"),
+        )[0]
+        self.assertEqual(result["assessment"]["status"], "inconclusive")
+        self.assertEqual(result["assessment"]["decision"], "INCONCLUSIVE")
+        self.assertEqual(result["preprocessing"]["source_width"], 64)
+        self.assertEqual(result["preprocessing"]["resized_width"], 32)
 
 
 if __name__ == "__main__":

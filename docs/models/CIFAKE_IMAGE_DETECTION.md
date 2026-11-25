@@ -77,7 +77,7 @@ Grad-CAM was generated for two REAL and two FAKE **validation** examples for eac
 - [EfficientNet-B0 validation explanations](../../experiments/runs/image_detection/cifake-v3/efficientnet-b0-20261124T164138Z-3fb11f07/explainability/)
 - [ViT patch attributions](../../experiments/runs/image_detection/cifake-v3/vit-small-20261125T052835Z-66479d18/explainability/)
 
-Single-image inference accepts an image path or PIL image, requires 32×32 RGB input, and returns REAL/FAKE probabilities, predicted label, confidence, model identifier, and measured inference duration. A representative validation-image smoke check ran on CUDA for all three checkpoints; probability pairs summed to 1.0. The API explicitly marks `calibrated_forensic_certainty` as false.
+Single-image inference accepts an image path or PIL image and returns REAL/FAKE probabilities, the raw model label, model identifier, and measured inference duration. A shared preparation path applies EXIF orientation, preserves aspect ratio, and uses the run's training-mean padding when converting non-native dimensions to 32×32. Native 32×32 input is passed through unchanged. Non-32×32 source images receive an `INCONCLUSIVE` assessment; the raw score is exploratory and outside the validated input domain. The API marks `confidence_calibrated` as false.
 
 ## GPU and software environment
 
@@ -101,4 +101,4 @@ Implementation and test files created for this branch:
 
 CIFAKE images are only 32×32 pixels. This discards fine texture and facial detail before classification and limits what any model or heatmap can explain. The branch therefore addresses low-resolution synthetic-image classification, not facial manipulation, video deepfake detection, high-resolution forensic analysis, or generalization to unseen generators. High test scores on CIFAKE do not remove those limits.
 
-The first resume attempt exposed a CUDA RNG-state device-mapping issue. The restore code now moves saved RNG byte tensors back to CPU before restoring CUDA generators; the CUDA checkpoint regression test passes, and all runs resumed from their recorded checkpoints. No unresolved implementation or training errors remain.
+The first resume attempt exposed a CUDA RNG-state device-mapping issue. The restore code now moves saved RNG byte tensors back to CPU before restoring CUDA generators; the CUDA checkpoint regression test passes, and all runs resumed from their recorded checkpoints. The application now checks that the registry checkpoint, held-out evaluation record, selected epoch, run snapshot, and architecture agree before loading the registered model. No external-generator evaluation is recorded for these runs.

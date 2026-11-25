@@ -11,24 +11,24 @@ Backend terminal:
 python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Frontend terminal:
+Vanilla frontend terminal:
 
 ```powershell
-cd frontend
-npm run dev
+python -m http.server 5173 --bind 127.0.0.1 --directory frontend/vanilla
 ```
 
-Open `http://127.0.0.1:5173`. The frontend proxies `/api` requests to `http://127.0.0.1:8000`; API docs are at `http://127.0.0.1:8000/docs`. Stop each server with Ctrl+C.
+Open `http://127.0.0.1:5173`. The frontend sends API requests to `http://127.0.0.1:8000/api/v1`; API docs are at `http://127.0.0.1:8000/docs`. Stop each server with Ctrl+C. The earlier React/Vite frontend remains in the project but is not active in this workflow.
 
-The existing virtual environment contains the project's PyTorch/CUDA stack. `requirements-app.txt` declares application-specific Python dependencies alongside the existing base and dataset requirements. For a fresh environment, install the CUDA-matched PyTorch and Torchvision builds from the official PyTorch selector before installing the project requirements; do not replace the existing `.venv`.
+The existing virtual environment contains the project's PyTorch/CUDA stack. The active frontend uses native browser modules and requires no added packages. For a fresh Python environment, install the CUDA-matched PyTorch and Torchvision builds from the official PyTorch selector before installing the project requirements; do not replace the existing `.venv`.
 
 ## Application behavior
 
-- Image inference loads one selected CIFAKE v3 checkpoint and its immutable per-run configuration snapshot. It resizes uploads to 32×32 RGB, which limits relevance to higher-resolution photographs and facial deepfakes. Probabilities are not calibrated forensic certainty.
+- Image inference loads one selected CIFAKE v3 checkpoint and its immutable per-run configuration snapshot. It applies EXIF orientation and aspect-preserving fit with training-mean padding for non-native dimensions. A source image other than 32×32 receives an `INCONCLUSIVE` assessment while its raw exploratory score remains available. Probabilities are not calibrated forensic certainty.
 - Model metrics come from saved CIFAKE v3 held-out test evaluation records and are displayed as benchmark results only. The application does not rerun test evaluation.
 - Video uploads are limited to 200 MB, inspected for metadata, and sampled at up to six frames. The application does not claim a real/fake video prediction because no validated video checkpoint is available.
 - Image and video media are not retained. Video uses a unique temporary file that the application removes after processing. SQLite stores filename, SHA-256, metadata, status, and supported model outputs under ignored `storage/app/`.
 - Printable reports are served as HTML with a browser print/save-to-PDF action; JSON reports can be downloaded directly.
+- The frontend API URL setting is restricted to loopback addresses so media cannot be sent to a remote endpoint.
 - API CORS defaults to `http://localhost:5173` and `http://127.0.0.1:5173`. Set `DEEPSHIELD_CORS_ORIGINS` to a comma-separated local-origin allowlist if needed.
 
 ## Main API routes

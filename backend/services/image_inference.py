@@ -9,16 +9,17 @@ from typing import Any
 
 import numpy as np
 import torch
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from scripts.training.image.checkpoint import load_checkpoint
 from scripts.training.image.data import INDEX_TO_LABEL
 from scripts.training.image.models import build_model
+from scripts.training.image.preprocessing import prepare_model_rgb
 from scripts.training.image.transforms import ImageTransform
 from scripts.training.image.utils import select_device
 from scripts.training.image.train import _load_config
 
-from backend.services.model_registry import MODELS, model_paths
+from backend.services.model_registry import MODELS, list_models, model_paths
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
@@ -55,7 +56,7 @@ class ImageInferenceService:
         try:
             with Image.open(__import__("io").BytesIO(data)) as probe:
                 actual_format = (probe.format or "").upper()
-                width, height = probe.size
+                original_width, original_height = probe.size
                 if actual_format not in SUPPORTED_FORMATS:
                     raise ImageInputError("The file content is not a supported image format.")
                 if expected_formats[suffix] != actual_format:
@@ -63,17 +64,28 @@ class ImageInferenceService:
                 expected_mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}[actual_format]
                 if declared_mime and declared_mime.lower() not in {expected_mime, "application/octet-stream"}:
                     raise ImageInputError("The declared content type does not match the image content.")
-                if width < 1 or height < 1 or width * height > MAX_IMAGE_PIXELS:
+                if original_width < 1 or original_height < 1 or original_width * original_height > MAX_IMAGE_PIXELS:
                     raise ImageInputError("Image dimensions are invalid or exceed the 40 megapixel limit.")
                 probe.verify()
             with Image.open(__import__("io").BytesIO(data)) as image:
                 image.load()
-                rgb = image.convert("RGB")
+                orientation = image.getexif().get(274)
+                rgb = ImageOps.exif_transpose(image).convert("RGB")
         except ImageInputError:
             raise
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             raise ImageInputError("The uploaded file is corrupt or cannot be decoded as an image.") from exc
-        return rgb, {"format": actual_format, "width": width, "height": height, "bytes": len(data)}
+        width, height = rgb.size
+        return rgb, {
+            "format": actual_format,
+            "width": width,
+            "height": height,
+            "original_width": original_width,
+            "original_height": original_height,
+            "exif_orientation": int(orientation) if orientation is not None else None,
+            "exif_orientation_applied": orientation not in (None, 1),
+            "bytes": len(data),
+        }
 
     def _load(self, model_id: str) -> None:
         if model_id not in MODELS:
@@ -92,6 +104,11 @@ class ImageInferenceService:
             raise RuntimeError("The checkpoint run is missing its configuration snapshot.")
         config = _load_config(snapshot_path)
         checkpoint = load_checkpoint(checkpoint_path, map_location="cpu")
+        model_record = next((entry for entry in list_models() if entry["id"] == model_id), None)
+        if model_record is None or model_record.get("status") != "available":
+            raise RuntimeError("The selected model registry entry is unavailable.")
+        if int(checkpoint["epoch"]) != int(model_record["checkpoint"]["epoch"]):
+            raise RuntimeError("Checkpoint epoch does not match its saved test evaluation record.")
         canonical_config = json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
         expected_hash = hashlib.sha256(canonical_config).hexdigest()
         if checkpoint.get("configuration_sha256") != expected_hash:
@@ -114,8 +131,9 @@ class ImageInferenceService:
             self._load(model_id)
             assert self._model is not None and self._transform is not None
             width, height = image.size
-            resized = image.resize((32, 32), Image.Resampling.BILINEAR)
-            array = np.asarray(resized, dtype=np.uint8)
+            assert self._transform is not None
+            mean_rgb = tuple(round(float(value) * 255) for value in self._transform.mean.flatten().tolist())
+            array, resize_metadata = prepare_model_rgb(image, size=32, fill_rgb=mean_rgb)
             tensor = self._transform(array).unsqueeze(0).to(self._device)
             start = time.perf_counter()
             with torch.inference_mode():
@@ -123,16 +141,36 @@ class ImageInferenceService:
                 if self._device.type == "cuda":
                     torch.cuda.synchronize(self._device)
             elapsed = (time.perf_counter() - start) * 1000
+            predicted_label = INDEX_TO_LABEL[int(probs.argmax().item())]
+            native_resolution = (width, height) == (32, 32)
+            assessment = {
+                "status": "model_indication" if native_resolution else "inconclusive",
+                "decision": predicted_label if native_resolution else "INCONCLUSIVE",
+                "raw_model_label": predicted_label,
+                "reason": (
+                    "The source image is 32x32, matching CIFAKE's training resolution. "
+                    "This remains a CIFAKE-specific model indication, not forensic certainty."
+                    if native_resolution
+                    else "The source image is not 32x32. Its resized model score is outside the validated CIFAKE resolution domain."
+                ),
+            }
             return {
-                "predicted_label": INDEX_TO_LABEL[int(probs.argmax().item())],
+                "predicted_label": predicted_label,
                 "real_probability": float(probs[0].item()),
                 "fake_probability": float(probs[1].item()),
                 "confidence_score": float(probs.max().item()),
                 "confidence_calibrated": False,
+                "assessment": assessment,
                 "model_id": model_id,
                 "model_identifier": self._identifier,
                 "device": str(self._device),
                 "inference_duration_ms": round(elapsed, 3),
-                "preprocessing": {"original_width": width, "original_height": height, "model_input": "32x32 RGB; resized with bilinear interpolation"},
+                "preprocessing": {
+                    **resize_metadata,
+                    "original_width": width,
+                    "original_height": height,
+                    "model_input": "32x32 RGB; aspect-preserving fit with training-mean padding",
+                    "resolution_matches_training": native_resolution,
+                },
             }
 

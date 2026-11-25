@@ -33,4 +33,11 @@ class TemporalTransformer(nn.Module):
     def __init__(self,dim=1280,max_frames=12,layers=2,heads=4,dropout=.1):
         super().__init__(); self.position=nn.Parameter(torch.zeros(1,max_frames,dim)); layer=nn.TransformerEncoderLayer(dim,heads,dim*2,dropout,batch_first=True,norm_first=True); self.encoder=nn.TransformerEncoder(layer,layers); self.attention=TemporalAttention(dim); self.head=nn.Linear(dim,2)
     def forward(self,features,mask):
-        x=self.encoder(features+self.position[:,:features.size(1)],src_key_padding_mask=~mask); pooled,weights=self.attention(x,mask); return {'logits':self.head(pooled),'frame_scores':torch.sigmoid(x.mean(-1)).masked_fill(~mask,0),'attention':weights,'features':x}
+        empty=~mask.any(1)
+        safe_mask=mask.clone()
+        safe_mask[empty,0]=True
+        x=self.encoder(features+self.position[:,:features.size(1)],src_key_padding_mask=~safe_mask)
+        x=x.masked_fill(empty[:,None,None],0.)
+        pooled,weights=self.attention(x,mask)
+        logits=self.head(pooled).masked_fill(empty[:,None],0.)
+        return {'logits':logits,'frame_scores':torch.sigmoid(x.mean(-1)).masked_fill(~mask,0),'attention':weights,'features':x}

@@ -6,9 +6,14 @@ from scripts.training.image.experiment import PROJECT_ROOT
 from backend.services.analysis_store import DB_PATH
 
 def system_status() -> dict:
-    gpu=None; free_vram=None
+    gpu=None; gpu_total=None; gpu_free=None; gpu_allocated=None; gpu_reserved=None
     if torch.cuda.is_available():
-        props=torch.cuda.get_device_properties(0); gpu=props.name; free_vram=int(props.total_memory)
+        props=torch.cuda.get_device_properties(0); gpu=props.name; gpu_total=int(props.total_memory)
+        try: gpu_free=int(torch.cuda.mem_get_info(0)[0])
+        except Exception: gpu_free=None
+        try:
+            gpu_allocated=int(torch.cuda.memory_allocated(0)); gpu_reserved=int(torch.cuda.memory_reserved(0))
+        except Exception: pass
     ram_total=None; ram_available=None
     try:
         import ctypes
@@ -26,4 +31,4 @@ def system_status() -> dict:
                 database_status="ok" if connection.execute("PRAGMA quick_check").fetchone()[0]=="ok" else "unavailable"
         except sqlite3.Error:
             database_status="unavailable"
-    return {"python_version":platform.python_version(),"cpu_name":platform.processor() or platform.machine(),"logical_cpu_count":os.cpu_count(),"database_status":database_status,"platform":platform.platform(),"pytorch_version":torch.__version__,"torchvision_version":__import__('torchvision').__version__,"cuda_available":torch.cuda.is_available(),"cuda_version":torch.version.cuda,"gpu_name":gpu,"gpu_memory_total_bytes":free_vram,"ram_total_bytes":ram_total,"ram_available_bytes":ram_available,"disk":{"project_root_free_bytes":usage.free,"total_bytes":usage.total},"image_models_available":sum(x['status']=='available' for x in __import__('backend.services.model_registry',fromlist=['list_models']).list_models()),"video_prediction_status":"unavailable_no_validated_video_checkpoint"}
+    return {"python_version":platform.python_version(),"cpu_name":platform.processor() or platform.machine(),"logical_cpu_count":os.cpu_count(),"database_status":database_status,"platform":platform.platform(),"pytorch_version":torch.__version__,"torchvision_version":__import__('torchvision').__version__,"cuda_available":torch.cuda.is_available(),"cuda_version":torch.version.cuda,"gpu_name":gpu,"gpu_memory_total_bytes":gpu_total,"gpu_memory_free_bytes":gpu_free,"gpu_memory_allocated_bytes":gpu_allocated,"gpu_memory_reserved_bytes":gpu_reserved,"ram_total_bytes":ram_total,"ram_available_bytes":ram_available,"disk":{"project_root_free_bytes":usage.free,"total_bytes":usage.total},"image_models_available":sum(x['status']=='available' for x in __import__('backend.services.model_registry',fromlist=['list_models']).list_models()),"video_prediction_status":"unavailable_no_validated_video_checkpoint"}

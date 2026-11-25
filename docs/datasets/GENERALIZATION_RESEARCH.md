@@ -1,0 +1,28 @@
+# External dataset research for model generalization
+
+**Reviewed:** 2026-11-25. No dataset was downloaded, no access terms were accepted, and no remote service received project files.
+
+This review separates AI-generated image classification from face manipulation and video deepfake detection. Dataset terms can cover the source images separately from benchmark code; verify the exact release and terms again before any acquisition or use.
+
+## AI-generated image candidates
+
+| Candidate | Official source and task | Resolution and scale | License/access findings | Storage / suitability |
+|---|---|---|---|---|
+| GenImage | [Authors' official repository](https://github.com/GenImage-Dataset/GenImage). AI-generated versus real image benchmark across Midjourney, Stable Diffusion, ADM, GLIDE, Wukong, VQDM, and BigGAN. | More than one million fake/real pairs; 1,000 ImageNet-aligned classes. Dataset files are compressed; the official repository does not publish a total archive size. | The repository dataset notice applies CC BY-NC-SA 4.0 plus additional dataset terms unless a dataset is specifically labeled otherwise. The real-image source also requires review of applicable ImageNet terms. Download links use Google Drive/Baidu Yunpan. Non-commercial research only. | High coverage, but size is unknown and unsuitable to approve without a release-specific storage inventory. Keep generators disjoint for external evaluation; do not merge all generations into a random image split. |
+| AIGCDetectBenchmark | [Authors' official repository](https://github.com/Ekko-zn/AIGCDetectBenchmark), [experiment documentation](https://fdmas.github.io/AIGCDetect/Document.html), and [evaluation records](https://fdmas.github.io/AIGCDetect/data/). The documentation describes cross-generator image classification. | Training is described as 360,000 LSUN real and 360,000 ProGAN fake images at 256×256. Evaluation spans GAN and diffusion sources, including Stable Diffusion, Midjourney, and SDXL. | The official repository has no visible dataset license file or dataset-specific use terms; code, benchmark images, LSUN, and generated images may have separate rights. Test data is distributed through ModelScope/Baidu. The license and exact release terms are unresolved. | Archive sizes are not published in the official docs. Potentially useful for external evaluation and 256×256 input, but acquisition should wait until image rights and archive sizes are confirmed. |
+| Synthbuster | [Author's Zenodo v1 record](https://zenodo.org/records/10066460). External evaluation of diffusion-generated images. | 9,000 synthetic images across nine generators (1,000 each); the record lists `synthbuster.zip` at 12.4 GB. Images are not JPEG-compressed or resampled in the dataset. Real RAISE-1k images are separate. | The Zenodo record identifies an open dataset but its visible Rights/License field is blank. That is a licensing ambiguity. The official [RAISE download page](https://loki.disi.unitn.it/RAISE/download.html) restricts use to non-commercial research and education and requires citation. | Best-sized named external evaluation candidate by known archive size, but extracted size is not specified and rights need clarification. Do not download or use until terms are resolved and separate approval is given. |
+
+## Face and video candidates
+
+| Candidate | Official source and task | Access, terms, and storage | Assessment |
+|---|---|---|---|
+| FaceForensics++ c23 | [Official dataset README](https://github.com/ondyari/FaceForensics/blob/master/dataset/README.md) covers original sequences and Deepfakes, Face2Face, FaceSwap, and NeuralTextures manipulations. | Requires a request form and acceptance; [terms](https://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf) restrict use to non-commercial research and education. The official README estimates about 10 GB for c23 videos and around 2 TB for all extracted PNG frames. | Suitable for face/video task development only after the provider grants access. Keep source-video groups intact and use bounded frame sampling; never extract all frames. Not acquired or validated in this audit. |
+| DFDC | [Meta's official dataset page](https://ai.meta.com/datasets/dfdc/). Full release contains 124,000 videos and eight modification algorithms; preview has 5,000 videos and two algorithms. | Requires an AWS account, IAM user/access keys, and account number before signup. Meta's page does not publish a total byte size. Full-release storage is unverified here and cannot be approved from the available project disk alone. | Relevant to video deepfake detection, not image AIGC. No acquisition or access request was made. Preserve the lack of video predictions until trained/evaluated data and checkpoints exist. |
+
+## Recommended next experiment design
+
+1. Keep the CIFAKE v3 test set frozen; its saved results remain only a same-benchmark reference.
+2. Resolve rights and storage first. Synthbuster plus the matching RAISE-1k real images is a potential small external evaluation, but the Synthbuster rights field and extracted size need clarification before acquisition.
+3. For new training, source-disjoint and generator-disjoint partitions are required. Reserve at least one generator and one independent real-image source for a final external evaluation.
+4. Record input dimensions, source generator, real-image source, file format, compression, resizing, and sample hashes. Report per-generator and per-source metrics; do not merge task labels across image, face, and video branches.
+5. Do not train or claim improved generalization until a properly licensed independent dataset is acquired and evaluation is executed.
