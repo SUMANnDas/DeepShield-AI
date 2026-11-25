@@ -1,4 +1,4 @@
-import { badge, card, el, emptyState, formatPercent, icon, metricTile, notice, pageTitle } from '../components.js'
+import { badge, card, el, emptyState, formatPercent, metricTile, pageTitle } from '../components.js'
 
 function matrixView(matrix) {
   if (!Array.isArray(matrix) || matrix.length !== 2) return el('p', { className: 'help-text' }, 'Confusion matrix was not saved.')
@@ -23,7 +23,7 @@ function modelCard(model) {
       metricTile('Recall · FAKE', formatPercent(metrics.recall_fake)),
       metricTile('F1 · FAKE', formatPercent(metrics.f1_fake)),
       metricTile('ROC-AUC', formatPercent(metrics.roc_auc, 4)),
-      metricTile('PR-AUC', 'Not recorded'),
+      metricTile('PR-AUC', metrics.pr_auc == null ? 'Not recorded' : formatPercent(metrics.pr_auc, 4)),
       metricTile('Validation ROC-AUC', formatPercent(model.validation_metrics?.roc_auc, 4)),
       metricTile('Test samples', model.test_samples ? model.test_samples.toLocaleString() : 'Not recorded'),
     ),
@@ -35,15 +35,17 @@ function modelCard(model) {
       el('div', {}, el('dt', {}, 'Input'), el('dd', {}, (model.input_dimensions || []).join(' × ') || 'Not recorded')),
       el('div', {}, el('dt', {}, 'Test manifest'), el('dd', {}, model.test_manifest_sha256 || 'Not recorded')),
     ),
-    notice('Benchmark scope', model.limitations || 'CIFAKE results do not establish general AI-generated image or facial deepfake performance.', 'warning'),
+    el('details', { className: 'scope-details' }, el('summary', {}, 'Benchmark limitations'),
+      el('div', {}, el('p', {}, model.limitations || 'CIFAKE v3 metrics describe this benchmark only. They do not establish general AI-generated image detection or facial deepfake performance.'))),
   )
 }
 
 export async function renderPerformance(root, { api }) {
   const report = await api.get('/performance')
   const models = report.items || []
-  root.append(pageTitle('Evaluation records', 'Model performance', 'Saved evaluation metrics for the approved duplicate-safe CIFAKE v3 split. The held-out test set was not re-evaluated for this project audit.'),
-    notice('One dataset, one task', report.scope_warning || 'These models distinguish CIFAKE classes only; they do not detect facial manipulation or video deepfakes.', 'warning'),
+  root.append(pageTitle('Saved evaluation records', 'Model performance', 'Review the recorded CIFAKE v3 benchmark metrics. This view does not re-run evaluation or use the held-out set for model selection.'),
+    el('details', { className: 'scope-details' }, el('summary', {}, 'Dataset and task scope'),
+      el('div', {}, el('p', {}, report.scope_warning || 'These results distinguish CIFAKE classes only. They do not detect facial manipulation or video deepfakes. CIFAKE source images are 32 × 32 pixels.'))),
     el('p', { className: 'help-text', style: { margin: '13px 2px' } }, `Evaluation: ${report.dataset || 'CIFAKE v3'} · threshold 0.5 · FAKE is positive.`),
     models.length ? el('section', { className: 'grid grid-2' }, models.map(modelCard)) : emptyState('No evaluation records', 'The backend did not return saved benchmark metrics.'))
 }

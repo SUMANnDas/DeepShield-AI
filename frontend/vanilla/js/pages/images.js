@@ -1,4 +1,4 @@
-import { badge, button, card, el, formatBytes, formatPercent, icon, notice, pageTitle } from '../components.js'
+import { badge, button, card, el, emptyState, formatBytes, formatPercent, icon, pageTitle } from '../components.js'
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ACCEPTED = new Set(['.jpg', '.jpeg', '.png', '.webp'])
@@ -24,12 +24,13 @@ function resultCard(record, api) {
     el('p', { className: 'page-description' }, assessment.reason || 'Model outputs are indicators, not proof.'),
     probabilityRow('REAL score', result.real_probability),
     probabilityRow('FAKE score', result.fake_probability, 'fake'),
-    notice('Uncalibrated model scores', 'Softmax probabilities are not calibrated forensic confidence. The model is trained only on CIFAKE v3.', 'warning'),
+    el('p', { className: 'help-text' }, 'Scores are uncalibrated model outputs, not forensic confidence. This checkpoint was trained on CIFAKE v3.'),
     el('dl', { className: 'detail-list' },
       el('div', {}, el('dt', {}, 'Model checkpoint'), el('dd', {}, result.model_identifier || 'Not returned')),
       el('div', {}, el('dt', {}, 'Runtime device'), el('dd', {}, result.device || 'Not returned')),
       el('div', {}, el('dt', {}, 'Inference time'), el('dd', {}, Number.isFinite(Number(result.inference_duration_ms)) ? `${Number(result.inference_duration_ms).toFixed(1)} ms` : 'Not recorded')),
       el('div', {}, el('dt', {}, 'Input size'), el('dd', {}, `${record.metadata?.width ?? '?'} × ${record.metadata?.height ?? '?'}`)),
+      el('div', {}, el('dt', {}, 'Analysis ID'), el('dd', {}, record.id || 'Not returned')),
     ),
     el('div', { className: 'report-actions' },
       el('a', { className: 'button button-secondary button-small', href: `${api.baseUrl}/reports/${encodeURIComponent(record.id)}.json`, target: '_blank', rel: 'noreferrer' }, icon('download', 14), el('span', {}, 'JSON report')),
@@ -55,9 +56,19 @@ export async function renderImageAnalysis(root, { api }) {
   const storedModel = (() => { try { return localStorage.getItem('deepshield.defaultModel') || '' } catch { return '' } })()
   models.forEach((model) => modelSelect.append(el('option', { value: model.id, selected: model.id === storedModel }, `${model.name} · ${model.architecture}`)))
   if (!models.length) modelSelect.append(el('option', { value: '', disabled: true, selected: true }, 'No model is available'))
+  const modelContext = el('div', { className: 'model-context' })
+  function updateModelContext() {
+    const model = models.find((item) => item.id === modelSelect.value)
+    modelContext.replaceChildren(model
+      ? el('div', {}, el('strong', {}, model.name || model.id), el('span', {}, `${model.architecture || 'Architecture not reported'} · ${model.task || 'CIFAKE image classification'} · CIFAKE v3`))
+      : el('span', {}, 'No available image checkpoint was reported by the backend.'))
+  }
+  updateModelContext()
+  modelSelect.addEventListener('change', updateModelContext)
   const submit = button('Analyze image', { variant: 'primary', iconName: 'arrow', type: 'submit', disabled: true })
   const progress = el('div', { className: 'hidden' }, el('div', { className: 'progress-line' }, el('span')), el('p', { className: 'help-text' }, 'Loading the checkpoint and analyzing the image locally…'))
-  const resultArea = el('div', { className: 'grid', 'aria-live': 'polite' })
+  const resultArea = el('div', { className: 'grid', 'aria-live': 'polite' },
+    card(emptyState('Assessment will appear here', 'Choose an image and run the local model to view its response.')))
   const form = el('form', { className: 'form-grid', onSubmit: async (event) => {
     event.preventDefault()
     const file = fileInput.files?.[0]
@@ -80,8 +91,8 @@ export async function renderImageAnalysis(root, { api }) {
       submit.querySelector('span').textContent = 'Analyze image'
     }
   } },
-    el('div', { className: 'field' }, el('span', { className: 'field-label' }, 'Choose an image model'), modelSelect,
-      el('small', {}, 'All listed models are CIFAKE v3 image classifiers. No face-manipulation or video model is available.')),
+    el('div', { className: 'field' }, el('span', { className: 'field-label' }, 'Choose an image model'), modelSelect, modelContext,
+      el('small', {}, 'Image class scores only. No face-manipulation or video classifier is available.')),
     uploadLabel,
     selectionError,
     previewArea,
@@ -92,6 +103,8 @@ export async function renderImageAnalysis(root, { api }) {
   let previewUrl = null
   function selectFile(file) {
     selectionError.textContent = ''
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    previewUrl = null
     previewArea.replaceChildren()
     previewArea.classList.add('hidden')
     submit.disabled = true
@@ -100,19 +113,30 @@ export async function renderImageAnalysis(root, { api }) {
     if (!ACCEPTED.has(extension)) { selectionError.textContent = 'Choose a JPEG, PNG, or WebP image.'; return }
     if (file.size > MAX_BYTES) { selectionError.textContent = 'The image exceeds the 10 MB limit.'; return }
     if (file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { selectionError.textContent = 'The selected file content type is not supported.'; return }
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
     previewUrl = URL.createObjectURL(file)
     const image = el('img', { className: 'preview-image', alt: 'Selected image preview' })
     image.src = previewUrl
     const dimensions = el('span', {}, 'Reading dimensions…')
     image.addEventListener('load', () => { dimensions.textContent = `${image.naturalWidth} × ${image.naturalHeight}` })
     image.addEventListener('error', () => { dimensions.textContent = 'Preview could not be decoded' })
+    const remove = button('Remove image', { variant: 'secondary', iconName: 'trash', className: 'button button-secondary button-small', onClick: () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      previewUrl = null
+      fileInput.value = ''
+      previewArea.replaceChildren()
+      previewArea.classList.add('hidden')
+      selectionError.textContent = 'Image selection cleared.'
+      submit.disabled = true
+    } })
     const heading = el('div', { className: 'card-header' },
-      el('div', {}, el('h2', {}, file.name), el('p', {}, 'Preview stays in this browser until you submit the form')),
+      el('div', {}, el('h2', {}, file.name), el('p', {}, 'Preview remains in this browser until you submit the form')),
+      remove,
     )
+    const dimensionValue = el('strong', {}, dimensions)
     const metadata = el('div', { className: 'file-meta' },
       el('span', {}, 'Size: ', el('strong', {}, formatBytes(file.size))),
-      el('span', {}, 'Dimensions: ', el('strong', {}, dimensions)),
+      el('span', {}, 'Dimensions: ', dimensionValue),
+      el('span', {}, 'Format: ', el('strong', {}, file.type || extension.replace('.', '').toUpperCase())),
     )
     previewArea.append(card(heading, image, metadata))
     previewArea.classList.remove('hidden')
@@ -133,7 +157,8 @@ export async function renderImageAnalysis(root, { api }) {
     selectFile(file)
   })
 
-  root.append(title, notice('Resolution and scope warning', 'Higher-resolution uploads are reduced for an exploratory score. Their assessment is marked inconclusive because the models were only validated on native 32×32 CIFAKE samples.', 'warning'))
+  root.append(title, el('details', { className: 'scope-details' }, el('summary', {}, 'Input resolution and model scope'),
+    el('div', {}, el('p', {}, 'CIFAKE images are 32 × 32 pixels. Larger uploads are reduced for an exploratory score and marked inconclusive because the model input domain has only been validated on native CIFAKE samples. This is AI-generated image classification and does not detect facial manipulation or video deepfakes.'))))
   root.append(el('section', { className: 'grid grid-2', style: { marginTop: '15px' } }, card(el('div', { className: 'card-header' }, el('div', {}, el('h2', {}, 'Select media'), el('p', {}, 'Uploads are processed in memory and are not retained.'))), form), resultArea))
   return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
 }

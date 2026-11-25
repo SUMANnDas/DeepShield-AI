@@ -1,6 +1,13 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { createApiClient, normalizeApiBase, saveApiBase, storedApiBase, DEFAULT_API_BASE } from '../js/api.js'
+import { createApiClient, normalizeApiBase, saveApiBase, storedApiBase, DEFAULT_API_BASE, resolveDefaultApiBase } from '../js/api.js'
+
+test('uses the current local FastAPI origin except for the frontend-only dev port', () => {
+  assert.equal(resolveDefaultApiBase({ href: 'http://127.0.0.1:8765/#/about' }), 'http://127.0.0.1:8765/api/v1')
+  assert.equal(resolveDefaultApiBase({ href: 'http://localhost:8000/' }), 'http://localhost:8000/api/v1')
+  assert.equal(resolveDefaultApiBase({ href: 'http://127.0.0.1:5173/#/about' }), 'http://127.0.0.1:8000/api/v1')
+  assert.equal(resolveDefaultApiBase({ href: 'https://example.com/' }), 'http://127.0.0.1:8000/api/v1')
+})
 
 test('normalizes a loopback API URL and appends the configured API prefix', () => {
   assert.equal(normalizeApiBase('http://127.0.0.1:8123/'), 'http://127.0.0.1:8123/api/v1')

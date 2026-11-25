@@ -1,12 +1,15 @@
 const API_PREFIX = '/api/v1'
 
-function defaultApiBase() {
-  if (typeof globalThis.location !== 'undefined') {
+export function resolveDefaultApiBase(location = globalThis.location) {
+  if (location) {
     try {
-      const current = new URL(globalThis.location.href)
+      const current = new URL(location.href || String(location))
       const hostname = current.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-      if (['127.0.0.1', 'localhost', '::1'].includes(hostname) && current.port === '8000') {
-        return `${current.origin}${API_PREFIX}`
+      if (['127.0.0.1', 'localhost', '::1'].includes(hostname)) {
+        // The Vite development server is frontend-only. Other local ports serve
+        // the FastAPI application and should use their own origin.
+        const origin = current.port === '5173' ? 'http://127.0.0.1:8000' : current.origin
+        return `${origin}${API_PREFIX}`
       }
     } catch {
       // Fall back to the documented local backend URL outside a browser.
@@ -15,7 +18,7 @@ function defaultApiBase() {
   return `http://127.0.0.1:8000${API_PREFIX}`
 }
 
-export const DEFAULT_API_BASE = defaultApiBase()
+export const DEFAULT_API_BASE = resolveDefaultApiBase()
 export const API_BASE_STORAGE_KEY = 'deepshield.apiBase'
 export const REQUEST_TIMEOUT_MS = 120_000
 

@@ -17,6 +17,16 @@ const ICONS = {
   alert: [['path', { d: 'M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z' }], ['path', { d: 'M12 9v4m0 3h.01' }]],
   file: [['path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }], ['path', { d: 'M14 2v6h6M8 13h8m-8 4h8' }]],
   close: [['path', { d: 'm18 6-12 12M6 6l12 12' }]],
+  menu: [['path', { d: 'M4 6h16M4 12h16M4 18h16' }]],
+  chevron: [['path', { d: 'm9 18 6-6-6-6' }]],
+  refresh: [['path', { d: 'M20 7v5h-5' }], ['path', { d: 'M20 12a8 8 0 1 1-2.35-5.65L20 9' }]],
+  search: [['circle', { cx: 11, cy: 11, r: 7 }], ['path', { d: 'm20 20-4-4' }]],
+  clock: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M12 7v5l3 2' }]],
+  cpu: [['rect', { x: 6, y: 6, width: 12, height: 12, rx: 2 }], ['path', { d: 'M9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3M9 9h6v6H9z' }]],
+  database: [['ellipse', { cx: 12, cy: 5, rx: 8, ry: 3 }], ['path', { d: 'M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' }]],
+  external: [['path', { d: 'M14 3h7v7m-1-6-9 9' }], ['path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }]],
+  trash: [['path', { d: 'M3 6h18m-2 0-.9 14H5.9L5 6m3 0V4h8v2m-7 4v6m4-6v6' }]],
+  imageStack: [['rect', { x: 3, y: 3, width: 14, height: 14, rx: 2 }], ['path', { d: 'm5 14 4-4 3 3 2-2 3 3M7 7h.01' }], ['path', { d: 'M7 19h12a2 2 0 0 0 2-2V7' }]],
 }
 
 export function el(tag, attrs = {}, ...children) {
@@ -75,6 +85,13 @@ export const pageTitle = (eyebrow, title, description, actions = null) => el(
 )
 
 export const badge = (label, tone = 'neutral') => el('span', { className: `badge badge-${tone}` }, label)
+
+export function sectionHeading(title, description = '', action = null) {
+  return el('div', { className: 'section-heading' },
+    el('div', {}, el('h2', {}, title), description ? el('p', {}, description) : null),
+    action,
+  )
+}
 
 export function formatPercent(value, digits = 2) {
   const numeric = Number(value)
