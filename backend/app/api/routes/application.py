@@ -28,6 +28,8 @@ router = APIRouter(tags=["application"])
 logger = logging.getLogger(__name__)
 image_service = ImageInferenceService()
 MAX_VIDEO_BYTES = 200 * 1024 * 1024
+MAX_VIDEO_DURATION_SECONDS = 10 * 60
+MAX_VIDEO_FRAME_PIXELS = 16_000_000
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
 def _store(request: Request) -> AnalysisStore:
@@ -66,6 +68,10 @@ async def analyze_image(request: Request, model_id: str = Form(...), file: Uploa
         raise HTTPException(status_code=404, detail="The selected model is unavailable.")
     data = await file.read(MAX_IMAGE_BYTES + 1)
     filename = _safe_filename(file.filename)
+    if not data:
+        raise HTTPException(status_code=400, detail="The uploaded image is empty.")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds the 10 MB upload limit.")
     try:
         image, dimensions = await run_in_threadpool(ImageInferenceService.validate_image, data, filename, file.content_type)
         result = await run_in_threadpool(image_service.predict, model_id, image)
@@ -79,46 +85,108 @@ async def analyze_image(request: Request, model_id: str = Form(...), file: Uploa
     return record
 
 def _video_process(path: str) -> tuple[dict, list[dict]]:
-    metadata = inspect_video(path)
+    metadata = inspect_video(path, max_frame_pixels=MAX_VIDEO_FRAME_PIXELS)
     if metadata.get("decode_status") != "ok":
+        if metadata.get("error") == "resolution_exceeds_processing_limit":
+            raise ValueError("Video resolution exceeds the local inspection limit of 16 megapixels per frame.")
         raise ValueError("The video could not be decoded.")
-    frames = sample_video(path, max_frames=6)
-    sampled=[]
+    duration = metadata.get("duration_seconds")
+    if duration is not None and duration > MAX_VIDEO_DURATION_SECONDS:
+        raise ValueError("Video exceeds the 10-minute local inspection limit.")
+    # Shrink each sampled frame as it is read so the API retains only small
+    # preview images instead of six potentially full-resolution frames.
+    frames = sample_video(path, max_frames=6, max_dimension=320)
+    sampled = []
     for item in frames:
-        if not item["decode_ok"] or item["frame"] is None: continue
-        frame=item["frame"]
-        scale=min(1.0,320/max(frame.shape[0],frame.shape[1]))
-        thumb=cv2.resize(frame,(max(1,int(frame.shape[1]*scale)),max(1,int(frame.shape[0]*scale))))
-        ok,encoded=cv2.imencode('.jpg',cv2.cvtColor(thumb,cv2.COLOR_RGB2BGR),[cv2.IMWRITE_JPEG_QUALITY,75])
-        if ok: sampled.append({"frame_index":item["frame_index"],"timestamp_seconds":item["timestamp_seconds"],"preview_jpeg_base64":base64.b64encode(encoded.tobytes()).decode("ascii")})
-    metadata.pop("file_path",None)
-    return metadata,sampled
+        if not item["decode_ok"] or item["frame"] is None:
+            continue
+        encoded_ok, encoded = cv2.imencode(
+            ".jpg",
+            cv2.cvtColor(item["frame"], cv2.COLOR_RGB2BGR),
+            [cv2.IMWRITE_JPEG_QUALITY, 75],
+        )
+        if encoded_ok:
+            sampled.append({
+                "frame_index": item["frame_index"],
+                "timestamp_seconds": item["timestamp_seconds"],
+                "preview_jpeg_base64": base64.b64encode(encoded.tobytes()).decode("ascii"),
+            })
+    metadata.pop("file_path", None)
+    return metadata, sampled
 
 @router.post("/analysis/videos", response_model=VideoAnalysisResponse)
 async def analyze_video(request: Request, file: UploadFile = File(...)):
-    filename=_safe_filename(file.filename)
+    filename = _safe_filename(file.filename)
     if Path(filename).suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
-        raise HTTPException(status_code=415,detail="Use an MP4, AVI, MOV, MKV, or WebM video.")
-    data=await file.read(MAX_VIDEO_BYTES+1)
-    if not data: raise HTTPException(status_code=400,detail="The uploaded file is empty.")
-    if len(data)>MAX_VIDEO_BYTES: raise HTTPException(status_code=413,detail="Video exceeds the 200 MB upload limit.")
-    temp_path=None
+        raise HTTPException(status_code=415, detail="Use an MP4, AVI, MOV, MKV, or WebM video.")
+
+    temp_path = None
+    file_size = 0
+    digest = hashlib.sha256()
     try:
-        handle=tempfile.NamedTemporaryFile(prefix="deepshield-video-",suffix=Path(filename).suffix.lower(),delete=False)
-        temp_path=handle.name
-        try: handle.write(data)
-        finally: handle.close()
-        metadata,sampled=await run_in_threadpool(_video_process,temp_path)
+        with tempfile.NamedTemporaryFile(
+            prefix="deepshield-video-",
+            suffix=Path(filename).suffix.lower(),
+            delete=False,
+        ) as handle:
+            temp_path = handle.name
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > MAX_VIDEO_BYTES:
+                    raise HTTPException(status_code=413, detail="Video exceeds the 200 MB upload limit.")
+                digest.update(chunk)
+                handle.write(chunk)
+
+        if file_size == 0:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        metadata, sampled = await run_in_threadpool(_video_process, temp_path)
+    except HTTPException:
+        raise
     except ValueError as exc:
-        raise HTTPException(status_code=415,detail=str(exc)) from exc
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("video inspection failed")
+        raise HTTPException(status_code=503, detail="The video could not be safely inspected.") from exc
     finally:
         if temp_path:
             try: os.unlink(temp_path)
             except FileNotFoundError: pass
-    digest=hashlib.sha256(data).hexdigest()
-    result={"prediction_available":False,"limitation":"Video prediction is unavailable: no validated trained video checkpoint or real-video evaluation dataset is available."}
-    record=_store(request).add(media_type="video",filename=filename,sha256=digest,metadata={**metadata,"sampled_frame_count":len(sampled),"retention":"Uploaded media is removed after temporary processing."},result=result,status="experimental_metadata_only")
-    return {"id":record["id"],"filename":filename,"sha256":digest,"status":record["status"],**result,"metadata":record["metadata"],"sampled_frames":sampled}
+            except OSError as exc:
+                logger.exception("failed to remove temporary video upload")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Temporary video cleanup failed; no analysis was saved.",
+                ) from exc
+        await file.close()
+
+    result = {
+        "prediction_available": False,
+        "limitation": "Video metadata and frame inspection are available. Validated video deepfake classification is not currently available.",
+    }
+    record = _store(request).add(
+        media_type="video",
+        filename=filename,
+        sha256=digest.hexdigest(),
+        metadata={
+            **metadata,
+            "sampled_frame_count": len(sampled),
+            "retention": "Uploaded media is removed after temporary processing.",
+        },
+        result=result,
+        status="experimental_metadata_only",
+    )
+    return {
+        "id": record["id"],
+        "filename": filename,
+        "sha256": record["sha256"],
+        "status": record["status"],
+        **result,
+        "metadata": record["metadata"],
+        "sampled_frames": sampled,
+    }
 
 @router.get("/history", response_model=HistoryResponse)
 def history(request: Request, query: str = "", media_type: str = Query(default="", pattern="^(|image|video)$"), limit: int = Query(default=100, ge=1, le=500)):
