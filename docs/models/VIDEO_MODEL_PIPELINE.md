@@ -24,6 +24,6 @@ All backbones currently use `weights=None`; this work has not downloaded pretrai
 
 ## Storage and experiments
 
-Video inputs, manifests, sampled-frame outputs, annotation indexes, run configurations, and checkpoints must remain under `DEEPSHIELD_VIDEO_DATA_ROOT` (default `D:\DeepShield-Data\VideoDetection`). Persistent frame output is disabled by default. The budget target is 30 GB, hard limit is 40 GB, and at least 5 GB must remain free on the target drive. Retain archives and originals; a quota failure can leave a partial generated artifact, which is preserved and is not reusable as a checkpoint.
+Video inputs, manifests, sampled-frame outputs, annotation indexes, run configurations, and checkpoints must remain under `DEEPSHIELD_VIDEO_DATA_ROOT` (default `C:\Users\User\DeepShield-Data\VideoDetection`). Persistent frame output is disabled by default. The budget target is 90 GB, hard limit is 100 GB total, and at least 10 GB must remain free on C:. Retain archives and originals through training. The user plans dataset cleanup after training; cleanup is not automated. A quota failure can leave a partial generated artifact, which is preserved and is not reusable as a checkpoint.
 
 See [VIDEO_STORAGE_BUDGET.md](../datasets/VIDEO_STORAGE_BUDGET.md) for the acquisition envelope and approval gate.

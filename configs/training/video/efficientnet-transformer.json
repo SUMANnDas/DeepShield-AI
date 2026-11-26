@@ -15,6 +15,6 @@
   "epochs": 20,
   "learning_rate": 0.0001,
   "mixed_precision": "bf16",
-  "storage_budget_gb": 40,
-  "storage_target_gb": 30
+  "storage_budget_gb": 100,
+  "storage_target_gb": 90
 }

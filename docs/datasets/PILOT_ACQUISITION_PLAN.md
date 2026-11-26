@@ -1,15 +1,15 @@
 # Controlled Pilot Acquisition Plan
 
-**Status:** CIFAKE v3 was downloaded and validated after the user's explicit approval. FaceForensics++ and ASVspoof 2019 LA have not been downloaded and remain unauthorized; each needs separate user approval. FaceForensics++ also requires provider access approval first.
+**Status:** CIFAKE v3 was downloaded and validated after the user's explicit approval. FaceForensics++ c23 has not been downloaded; the user reports provider access is granted and confirmed non-commercial research use, but exact package sizing and separate download approval remain pending. ASVspoof 2019 LA remains unacquired and unauthorized.
 
 ## Capacity and destination
 
-The project is located on C:. After CIFAKE acquisition and processing, C: had about 235.16 GiB free and D: about 66.93 GiB free. The configured/approved DeepShield dataset directory was not present on D:, so data remains under the project on C:. Reserve about 40 GB for all three sources, extracted media, pilot outputs, and headroom. CIFAKE's archive plus extracted source uses 220,348,705 bytes including its acquisition metadata and Kaggle snapshot; all retained CIFAKE manifests, indexes, samples, and outputs currently use about 2.32 GB. The latter includes preserved exploratory split runs.
+The project is located on C:. A recent preflight measured about 220.96 GiB free on C:; recheck before any acquisition. Video data will use the dedicated root `C:\Users\User\DeepShield-Data\VideoDetection`, outside the repository, with a 90 GB target, 100 GB hard cap, and 10 GB minimum free-space reserve. That root does not exist yet. The user plans to delete the video dataset after training; no automatic cleanup is configured. CIFAKE remains in its existing project location and is untouched. CIFAKE's archive plus extracted source uses 220,348,705 bytes including its acquisition metadata and Kaggle snapshot; all retained CIFAKE manifests, indexes, samples, and outputs currently use about 2.32 GB. The latter includes preserved exploratory split runs.
 
 | Dataset | Proposed exact raw destination | Download/extracted storage estimate | Proposed pilot output |
 |---|---|---|---|
 | CIFAKE v3 (downloaded 2026-11-24) | `C:\Users\User\Desktop\DeepShield-AI\datasets\raw\images\CIFAKE-v3` (`archive.zip` retained; `train/` and `test/` extracted beneath it) | Actual ZIP: 109,625,224 bytes; extracted source: 110,717,853 bytes; raw archive + source + metadata: 220,344,730 bytes. | 400-image pilot: 100 per class in each published train/test partition; 32x32 RGB; 400 processed outputs, all readable, 0 corrupt. |
-| FaceForensics++ c23 | `C:\Users\User\Desktop\DeepShield-AI\datasets\raw\video\FaceForensicsPP-c23` | Provider estimates about 10 GB for c23 videos. Reserve 20 GB for received media, any provider archive/temporary extraction, and pilot copies. | Stage 100 videos (20 originals and 20 from each of the four manipulation families when the release annotations support this); uniformly sample at most 12 frames/video, capped at 1,200 frames. Reserve up to 1 GB for sampled frames/manifests. No full-frame extraction. |
+| FaceForensics++ c23 | `C:\Users\User\DeepShield-Data\VideoDetection\raw\FaceForensics++-c23` | Official README estimates about 10 GB for c23 videos, but exact authorized package/archive and extracted sizes are unknown until its file listing is inspected. Preflight all retained copies and outputs against the 100 GB hard cap; stop if over the 90 GB target until a smaller c23-only subset is approved. | Stage at most 100 videos only after acquisition approval; uniformly sample at most 12 frames/video, capped at 1,200 frames. Persistent full-frame extraction is disabled. |
 | ASVspoof 2019 LA | `C:\Users\User\Desktop\DeepShield-AI\datasets\raw\audio\ASVspoof2019-LA` (retain `LA.zip` here; extract to `release\`) | Official record lists `LA.zip` at 7.12 GB; extracted FLAC is estimated at 7.1–7.5 GB. Keep both archive and extraction; reserve 15 GB including pilot copies and metadata. | Stage 500 utterances balanced across bona-fide/spoof labels and drawn from official train/dev/eval partitions; preserve all source partition and speaker IDs. Use 16 kHz mono, 4-second segments with 0.5-second overlap, and log-mel features; reserve up to 1 GB. |
 
 The CIFAKE pilot input consists of copies at `datasets/interim/images/CIFAKE-v3-pilot32-input`; processed outputs are at `datasets/processed/images/CIFAKE-v3-pilot32`. Its full and pilot manifests, grouped split manifests, and leakage reports are under `datasets/manifests/`. Future pilot inputs for the other datasets will be copies and never moves of source media. Before any new write, check that each exact path is absent; do not overwrite an existing run.
@@ -29,8 +29,8 @@ The CIFAKE pilot input consists of copies at `datasets/interim/images/CIFAKE-v3-
 ### FaceForensics++ c23
 
 - Official source: [FaceForensics++ dataset README](https://github.com/ondyari/FaceForensics/blob/master/dataset/README.md); [Terms of Use](https://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf).
-- Size and terms: the official README estimates about 10 GB for c23. Access is request-gated; accepted users receive a download script. Terms limit access/use to approved non-commercial research and education. The provider estimates around 2 TB for full extracted PNG frames; this plan does not extract all frames.
-- Access: **not authorized or available yet.** Obtain FaceForensics++ provider approval and accept its terms before asking for or using the download script. After access is granted, request a separate user approval before download.
+- Size and terms: the official README estimates about 10 GB for c23. This is not an exact size for the user's authorized package; inspect its official file listing before preflight. Terms limit use to non-commercial research and education. The provider estimates around 2 TB for full extracted PNG frames; this plan does not extract all frames.
+- Access: the user reports provider access is granted and confirmed non-commercial research use. The authorized script/listing is not yet available locally. Do not accept terms on the user's behalf. After exact sizes, destination, and free space are verified, request separate user approval before downloading.
 - Annotation validation: use only official video labels, manipulation method, source-video identity, and official split metadata. If those fields are not present or cannot be reconciled, stop processing and report the gap; do not invent labels or partitions.
 
 ### ASVspoof 2019 LA
@@ -44,7 +44,7 @@ The CIFAKE pilot input consists of copies at `datasets/interim/images/CIFAKE-v3-
 
 For each dataset, independently:
 
-1. Recheck official source URL, exact release/version, license/access terms, current listed byte size, available storage, and exact destination. For gated data, verify access was granted.
+1. Recheck official source URL, exact release/version, license/access terms, current listed byte size, available storage, and exact destination. For gated data, verify the user-reported access and obtain its authorized file listing.
 2. Present the dataset-specific request to the user and wait. A previous approval for another source does not authorize this download.
 3. Download only after approval. Record date, source, version, exact size, and cryptographic archive hash. Keep archives and original media; never delete them automatically.
 4. Verify archive integrity with the provider checksum when available, otherwise record the computed SHA-256 and successful archive listing/test. Extract only to the named dataset directory, without replacing existing files.
@@ -56,4 +56,4 @@ The provider partition mapper in `configs/datasets/splits.json` keeps train/trai
 
 ## Current validation state
 
-CIFAKE v3 has been downloaded, extracted, fully image-validated, manifested, split, and leakage-checked as recorded above. FaceForensics++ and ASVspoof 2019 LA remain unacquired and unvalidated. No models have been trained. Do not use CIFAKE's derived split outputs as the provider's official test partition.
+CIFAKE v3 has been downloaded, extracted, fully image-validated, manifested, split, and leakage-checked as recorded above. FaceForensics++ c23 access is reported granted but no media is acquired or validated; exact sizing and separate download approval are pending. ASVspoof 2019 LA remains unacquired and unvalidated. No video model has been trained. Do not use CIFAKE's derived split outputs as the provider's official test partition.

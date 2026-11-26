@@ -10,7 +10,7 @@
 - [Controlled pilot acquisition plan](PILOT_ACQUISITION_PLAN.md)
 - [Dataset environment and dependency verification](ENVIRONMENT_SETUP.md)
 
-After CIFAKE v3 acquisition and validation, about 235.16 GiB remained free on C: and 66.93 GiB on D:. No approved project dataset destination exists on D:, so data remains inside the project on C:. CIFAKE v3 is acquired; FaceForensics++ c23 and ASVspoof 2019 LA remain pending separate approval. Their estimated source payloads plus CIFAKE's actual ZIP size total about 17.23 GB; reserve about 40 GB for extracted copies, bounded pilot outputs, and headroom. See the acquisition plan for exact paths, results, and licensing/access caveats.
+After CIFAKE v3 acquisition and validation, a recent preflight measured about 220.96 GiB free on C:. CIFAKE remains in its existing project location. Video data will use the outside-repository root `C:\Users\User\DeepShield-Data\VideoDetection`, with a 90 GB target and 100 GB hard cap; the directory is not created yet. The user reports FaceForensics++ c23 access is granted, but exact package sizes and separate download approval are pending. ASVspoof 2019 LA remains unacquired and requires separate approval. The user plans to delete the video dataset after training; cleanup is not automatic. See the acquisition plan for exact paths, results, and licensing/access caveats.
 
 ## Processing and integrity
 

@@ -14,11 +14,11 @@ from pathlib import Path
 
 GB = 1_000_000_000
 DEFAULT_VIDEO_DATA_ROOT = Path(
-    os.environ.get("DEEPSHIELD_VIDEO_DATA_ROOT", r"D:\DeepShield-Data\VideoDetection")
+    os.environ.get("DEEPSHIELD_VIDEO_DATA_ROOT", r"C:\Users\User\DeepShield-Data\VideoDetection")
 )
-DEFAULT_HARD_LIMIT_BYTES = 40 * GB
-DEFAULT_TARGET_BYTES = 30 * GB
-DEFAULT_MINIMUM_FREE_BYTES = 5 * GB
+DEFAULT_HARD_LIMIT_BYTES = 100 * GB
+DEFAULT_TARGET_BYTES = 90 * GB
+DEFAULT_MINIMUM_FREE_BYTES = 10 * GB
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
