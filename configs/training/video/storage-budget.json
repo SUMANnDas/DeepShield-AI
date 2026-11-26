@@ -1,0 +1,13 @@
+{
+  "data_root_env": "DEEPSHIELD_VIDEO_DATA_ROOT",
+  "default_data_root": "D:\\DeepShield-Data\\VideoDetection",
+  "target_gb": 30,
+  "hard_limit_gb": 40,
+  "minimum_free_gb": 5,
+  "retain_download_archives": true,
+  "retain_raw_media": true,
+  "persistent_full_frame_extraction": false,
+  "default_frames_per_video": 12,
+  "persistent_preprocessing_cache_gb": 0,
+  "output_policy": "Every archive, raw video, cache, checkpoint, and run output must remain under one budget root. Preflight estimated archive plus extracted, cache, checkpoint, and temporary bytes before each write. Stop on quota breach; never automatically delete or replace an artifact."
+}

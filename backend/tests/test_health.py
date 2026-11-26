@@ -65,7 +65,8 @@ class HealthRouteTests(unittest.TestCase):
 
         self.assertEqual(css.status_code, 200)
         self.assertIn("text/css", css.headers["content-type"])
-        self.assertIn("--bg:", css.text)
+        self.assertIn("--page:", css.text)
+        self.assertIn("--surface:", css.text)
         self.assertEqual(script.status_code, 200)
         self.assertIn("javascript", script.headers["content-type"])
         self.assertEqual(dashboard.status_code, 200)
