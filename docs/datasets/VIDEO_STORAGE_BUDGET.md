@@ -8,13 +8,13 @@
 - Default dedicated root: `D:\DeepShield-Data\VideoDetection`, configurable with `DEEPSHIELD_VIDEO_DATA_ROOT`.
 - Keep video data outside the Git repository. Do not count the existing CIFAKE dataset or image-model artifacts as video storage, and do not modify them.
 
-The 40 GB limit is one combined cap; it is not 40 GB per drive. Store all new video assets under the same root so the quota check sees retained archives and their extracted copies together.
+The 40 GB limit is one combined cap; it is not 40 GB per drive. Store all new video assets under the same root so the quota check sees retained archives and their extracted copies together. The current implementation requires video inputs, manifests, persistent sampled frames, run configs, and checkpoints to stay beneath that root.
 
 ## Feasibility from the current read-only audit
 
 The expected `D:\DeepShield-Data\VideoDetection` directory does not currently exist. The audit measured about 66.9 GiB free on D: and 221.8 GiB free on C:; these readings are snapshots, not a promise of future capacity. The video dataset, cache, and experiment directories are not present in the project. The existing CIFAKE v3 tree under the repository is about 0.21 GiB and remains untouched.
 
-The official FaceForensics++ README estimates approximately 10 GB for its c23 compressed videos and offers a `--num_videos` option for smaller downloads. The separate Google/Jigsaw DeepFakeDetection subset adds about 25 GB at c23 (3 GB original plus 22 GB manipulated) and must be excluded from the initial acquisition. The original YouTube source-video bundle (about 38.5 GB) is not required and must also be excluded. FaceForensics++ requires an approved access request. Its terms limit use to non-commercial research and education, so the user must confirm this scope is compatible before accepting the terms. An archive, if the delivery method provides one, must be counted in addition to extracted files because the archive is retained.
+The official FaceForensics++ README estimates approximately 10 GB for its c23 compressed videos and offers a `--num_videos` option for smaller downloads. The separate Google/Jigsaw DeepFakeDetection subset adds about 25 GB at c23 (3 GB original plus 22 GB manipulated) and must be excluded from the initial acquisition. The original YouTube source-video bundle (about 38.5 GB) is not required and must also be excluded. FaceForensics++ requires an approved access request. The user confirmed this project will use it exclusively for non-commercial research; the dataset terms also describe educational use. An archive, if the delivery method provides one, must be counted in addition to extracted files because the archive is retained.
 
 Meta's official DFDC page identifies a 5k-video Preview and a 124k-video Full release, but does not publish a byte size. The full release must be excluded from this budget; do not start the Preview until the authorized download listing provides a measured total that fits the cap. DeeperForensics-1.0 reports approximately 284 GB and is outside the limit.
 
@@ -37,13 +37,13 @@ If the provider's archive plus extracted files exceed their combined allowance, 
 
 ## Enforcement
 
-`scripts/training/video/storage_budget.py` measures current regular-file usage under the configured root, checks the planned write against the hard quota and the target-volume free-space reserve, rejects destinations outside the root, and refuses existing destination paths. It is read-only and never creates directories, deletes data, or clears caches.
+`scripts/training/video/storage_budget.py` measures current regular-file usage under the configured root, checks planned writes against the hard quota and target-volume free-space reserve, rejects destinations outside the root, and refuses existing destination paths. Video preprocessing defaults to metadata-only frame sampling (`persist_frames: false`); optional JPEG persistence is quota-checked frame by frame. Manifest rows, bounded SQLite annotation indexes, experiment configs, and streamed checkpoints also use the budget guard. A quota breach during a streamed write can leave a partial artifact; it is preserved, is not a valid checkpoint, and must not be reused under the same name. The guard never deletes data or clears caches. Archive download and extraction still require their own measured-size preflight before acquisition.
 
 Before each acquisition, extraction, cache, or experiment run, measure the actual bytes and run the budget preflight. Recheck free space; do not rely on the audit snapshot. Keep actual archive, extraction, cache, and run sizes in the eventual dataset documentation.
 
 ## Access and acquisition status
 
-No video dataset has been downloaded. No portal terms have been accepted and no registration has been submitted. FaceForensics++ c23 without DeepFakeDetection is the best-documented initial candidate for the 40 GB cap, subject to the user's confirmation that non-commercial research/education use is acceptable, provider approval, and separate dataset-specific acquisition approval. DFDC Preview remains a possible alternative only if credentials are restored and its authorized object listing fits without exceeding 40 GB while preserving archives and extracted media.
+No video dataset has been downloaded. No portal terms have been accepted and no registration has been submitted. FaceForensics++ c23 without DeepFakeDetection is the best-documented initial candidate for the 40 GB cap, subject to provider approval and separate dataset-specific acquisition approval. DFDC Preview remains a possible alternative only if credentials are restored and its authorized object listing fits without exceeding 40 GB while preserving archives and extracted media.
 
 ## Official source references
 

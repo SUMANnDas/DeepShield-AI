@@ -22,6 +22,11 @@ from scripts.datasets.manifest_utils import read_jsonl
 from scripts.datasets.report_pipeline import generate_dataset_report
 from scripts.datasets.split_pipeline import create_group_splits
 from scripts.datasets.video_pipeline import process_video_directory
+from scripts.training.video.storage_budget import (
+    StorageBudgetExceeded,
+    VideoStorageBudget,
+    directory_size,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = Path(__file__).resolve().parent / "generated"
@@ -168,10 +173,14 @@ class DatasetPreprocessingTests(unittest.TestCase):
             writer.write(frame)
         writer.release()
         config = self.root / "video-config.json"
-        self.write_json(config, {"sampling_strategy": "uniform", "max_frames": 3, "face_detection_enabled": False})
+        self.write_json(config, {
+            "sampling_strategy": "uniform", "max_frames": 3,
+            "face_detection_enabled": False, "persist_frames": True,
+        })
         manifest = self.root / "videos.jsonl"
         stats = process_video_directory(
             source, self.root / "video-output", manifest, dataset_name="fixture-video", config_path=config,
+            budget=VideoStorageBudget(root=self.root, minimum_free_bytes=0, project_root=None),
         )
         self.assertEqual(stats["videos"], 1)
         self.assertEqual(stats["video_errors"], 0)
@@ -179,6 +188,53 @@ class DatasetPreprocessingTests(unittest.TestCase):
         self.assertEqual(len(rows), 3)
         self.assertEqual([row["frame_number"] for row in rows], [0, 4, 7])
         self.assertTrue(all(row["preprocessing_status"] == "processed" for row in rows))
+        self.assertEqual(stats["frames_persisted"], 3)
+        self.assertTrue(all((self.root / "video-output" / row["output_path"]).is_file() for row in rows))
+
+    def test_video_pipeline_defaults_to_metadata_only_and_enforces_quota(self) -> None:
+        source = self.root / "metadata-video"
+        source.mkdir()
+        video_path = source / "clip.avi"
+        writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"MJPG"), 8.0, (96, 64))
+        if not writer.isOpened():
+            writer.release()
+            self.skipTest("OpenCV MJPG video writer is unavailable in this runtime")
+        for index in range(8):
+            frame = np.zeros((64, 96, 3), dtype=np.uint8)
+            cv2.rectangle(frame, (index * 4, 10), (index * 4 + 20, 35), (40, 180, 230), -1)
+            writer.write(frame)
+        writer.release()
+        config = self.root / "metadata-video-config.json"
+        self.write_json(config, {
+            "sampling_strategy": "uniform", "max_frames": 3,
+            "face_detection_enabled": False,
+        })
+        manifest = self.root / "metadata-videos.jsonl"
+        budget = VideoStorageBudget(root=self.root, minimum_free_bytes=0, project_root=None)
+        stats = process_video_directory(
+            source, self.root / "metadata-output", manifest, dataset_name="metadata-only",
+            config_path=config, budget=budget,
+        )
+        rows = list(read_jsonl(self.root / "metadata-videos_frames.jsonl"))
+        self.assertEqual(stats["frames_sampled"], 3)
+        self.assertEqual(stats["frames_persisted"], 0)
+        self.assertFalse((self.root / "metadata-output" / "frames").exists())
+        self.assertTrue(all(row["output_path"] is None for row in rows))
+        self.assertTrue(all(row["preprocessing_status"] == "sampled_metadata_only" for row in rows))
+
+        limited_budget = VideoStorageBudget(
+            root=self.root,
+            hard_limit_bytes=budget.report().current_bytes + 32,
+            target_bytes=budget.report().current_bytes + 16,
+            minimum_free_bytes=0,
+            project_root=None,
+        )
+        with self.assertRaises(StorageBudgetExceeded):
+            process_video_directory(
+                source, self.root / "limited-output", self.root / "limited.jsonl",
+                dataset_name="quota-check", config_path=config, budget=limited_budget,
+            )
+        self.assertLessEqual(directory_size(self.root), limited_budget.hard_limit_bytes)
 
     def test_group_splits_keep_speakers_together_and_leakage_checker_passes(self) -> None:
         source = self.root / "source.jsonl"

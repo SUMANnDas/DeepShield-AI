@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
-import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +14,6 @@ import numpy as np
 from scripts.datasets.face_utils import FaceDetector
 from scripts.datasets.manifest_utils import (
     annotation_for,
-    append_jsonl,
     config_hash,
     exclusive_jsonl,
     iter_media_files,
@@ -22,17 +21,20 @@ from scripts.datasets.manifest_utils import (
     load_annotations,
     log_file_error,
     relative_posix,
-    refuse_existing,
     safe_output_name,
     sample_id,
     sha256_file,
+)
+from scripts.training.video.storage_budget import (
+    StorageBudgetExceeded,
+    VideoStorageBudget,
 )
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_CONFIG: dict[str, Any] = {
     "video_extensions": [".mp4", ".avi", ".mov", ".mkv", ".webm"],
     "sampling_strategy": "uniform",
-    "max_frames": 24,
+    "max_frames": 12,
     "scene_probe_stride": 5,
     "scene_change_threshold": 0.18,
     "face_probe_stride": 5,
@@ -41,6 +43,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "face_scale_factor": 1.1,
     "face_min_neighbors": 5,
     "jpeg_quality": 95,
+    "persist_frames": False,
 }
 
 
@@ -163,6 +166,23 @@ def _track_faces(
     return ids, current, next_track
 
 
+def _append_jsonl_budgeted(
+    handle: Any,
+    record: dict[str, Any],
+    budget: VideoStorageBudget,
+    usage: dict[str, int],
+    purpose: str,
+) -> None:
+    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
+    size = len(payload.encode("utf-8"))
+    budget.require_capacity(size, purpose=purpose, current_bytes=usage["bytes"])
+    # Count conservatively before writing so a failed/partial write cannot make
+    # a later preflight underestimate what this process consumed.
+    usage["bytes"] += size
+    handle.write(payload)
+    handle.flush()
+
+
 def process_video_directory(
     input_root: Path,
     output_dir: Path,
@@ -176,21 +196,52 @@ def process_video_directory(
     default_label: str = "UNKNOWN",
     annotations_path: Path | None = None,
     config_path: Path | None = None,
+    budget: VideoStorageBudget | None = None,
 ) -> dict[str, int]:
     root = Path(input_root).resolve()
     if not root.is_dir():
         raise NotADirectoryError(f"Video input directory does not exist: {root}")
-    output_root = Path(output_dir)
-    manifest = Path(manifest_path)
+    active_budget = budget or VideoStorageBudget()
+    active_budget.validate_location(root)
+    output_root = Path(output_dir).expanduser().resolve()
+    manifest = Path(manifest_path).expanduser().resolve()
+    active_budget.validate_location(output_root)
+    active_budget.validate_location(manifest)
     frame_manifest = manifest.with_name(f"{manifest.stem}_frames.jsonl")
-    refuse_existing(manifest)
-    refuse_existing(frame_manifest)
+    active_budget.validate_destination(manifest)
+    active_budget.validate_destination(frame_manifest)
+    if annotations_path is not None:
+        annotations_path = Path(annotations_path).expanduser().resolve()
+        active_budget.validate_location(annotations_path)
     config = json_config(config_path, DEFAULT_CONFIG)
     config_digest = config_hash(config)
     annotation_store_path = manifest.with_suffix(".annotations.sqlite3")
-    annotations = load_annotations(annotations_path, annotation_store_path if annotations_path else None)
+    annotation_index_limit: int | None = None
+    if annotations_path is not None:
+        active_budget.validate_destination(annotation_store_path)
+        video_count = sum(1 for _ in iter_media_files(root, config["video_extensions"]))
+        current_report = active_budget.report()
+        manifest_reserve = video_count * 4096 * (max(1, int(config.get("max_frames", 12))) + 1)
+        available_bytes = min(
+            active_budget.hard_limit_bytes - current_report.current_bytes,
+            current_report.free_bytes - active_budget.minimum_free_bytes,
+        ) - manifest_reserve
+        if available_bytes < 4096:
+            raise StorageBudgetExceeded(
+                "Not enough quota remains for the annotation index and bounded video manifests."
+            )
+        annotation_index_limit = available_bytes
+        active_budget.require_capacity(
+            annotation_index_limit + manifest_reserve,
+            purpose="reserving space for the video annotation index and manifests",
+        )
+    annotations = load_annotations(
+        annotations_path,
+        annotation_store_path if annotations_path else None,
+        index_max_bytes=annotation_index_limit,
+    )
     strategy = str(config.get("sampling_strategy", "uniform")).lower()
-    max_frames = max(1, int(config.get("max_frames", 24)))
+    max_frames = max(1, int(config.get("max_frames", 12)))
     detector = None
     if config.get("face_detection_enabled", True):
         detector = FaceDetector(
@@ -200,7 +251,18 @@ def process_video_directory(
         )
     output_root.mkdir(parents=True, exist_ok=True)
     frame_output = output_root / "frames"
-    stats = {"videos": 0, "frames": 0, "video_errors": 0, "frame_errors": 0}
+    persist_frames = bool(config.get("persist_frames", False))
+    if persist_frames:
+        active_budget.validate_location(frame_output)
+    usage = {"bytes": active_budget.report().current_bytes}
+    stats = {
+        "videos": 0,
+        "frames": 0,
+        "frames_sampled": 0,
+        "frames_persisted": 0,
+        "video_errors": 0,
+        "frame_errors": 0,
+    }
 
     with exclusive_jsonl(manifest) as video_out, exclusive_jsonl(frame_manifest) as frames_out:
         for path in iter_media_files(root, config["video_extensions"]):
@@ -231,6 +293,7 @@ def process_video_directory(
                 "fourcc": None,
                 "sampling_strategy": strategy,
                 "extracted_frame_count": 0,
+                "sampled_frame_count": 0,
                 "decode_failure_count": 0,
                 "preprocessing_config_hash": config_digest,
                 "preprocessing_status": "pending",
@@ -321,20 +384,40 @@ def process_video_directory(
                                         "face_boxes": boxes,
                                         "track_ids": track_ids,
                                     })
-                                    output_path = frame_output / f"{identifier}_frame{current_frame:09d}.jpg"
-                                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                                    refuse_existing(output_path)
-                                    ok_write = cv2.imwrite(
-                                        str(output_path),
-                                        frame,
-                                        [cv2.IMWRITE_JPEG_QUALITY, int(config.get("jpeg_quality", 95))],
-                                    )
-                                    if not ok_write:
-                                        raise IOError("frame_write_failed")
-                                    frame_record["output_path"] = output_path.relative_to(output_root).as_posix()
-                                    frame_record["preprocessing_status"] = "processed"
-                                    record["extracted_frame_count"] += 1
-                                    stats["frames"] += 1
+                                    if persist_frames:
+                                        output_path = frame_output / f"{identifier}_frame{current_frame:09d}.jpg"
+                                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                                        active_budget.validate_destination(output_path)
+                                        encoded_ok, encoded = cv2.imencode(
+                                            ".jpg",
+                                            frame,
+                                            [cv2.IMWRITE_JPEG_QUALITY, int(config.get("jpeg_quality", 95))],
+                                        )
+                                        if not encoded_ok:
+                                            raise IOError("frame_encode_failed")
+                                        content = encoded.tobytes()
+                                        active_budget.require_capacity(
+                                            len(content),
+                                            purpose="persisting a sampled video frame",
+                                            current_bytes=usage["bytes"],
+                                        )
+                                        usage["bytes"] += len(content)
+                                        with output_path.open("xb") as frame_out:
+                                            written = frame_out.write(content)
+                                            frame_out.flush()
+                                        if written != len(content):
+                                            raise IOError("frame_write_failed")
+                                        frame_record["output_path"] = output_path.relative_to(output_root).as_posix()
+                                        frame_record["preprocessing_status"] = "processed"
+                                        record["extracted_frame_count"] += 1
+                                        stats["frames"] += 1
+                                        stats["frames_persisted"] += 1
+                                    else:
+                                        frame_record["preprocessing_status"] = "sampled_metadata_only"
+                                    record["sampled_frame_count"] += 1
+                                    stats["frames_sampled"] += 1
+                                except StorageBudgetExceeded:
+                                    raise
                                 except FileExistsError:
                                     raise
                                 except Exception as exc:
@@ -343,12 +426,14 @@ def process_video_directory(
                                     record["decode_failure_count"] += 1
                                     stats["frame_errors"] += 1
                                     log_file_error(LOGGER, "frame", relative, exc)
-                            append_jsonl(frames_out, frame_record)
+                            _append_jsonl_budgeted(
+                                frames_out, frame_record, active_budget, usage, "writing the frame manifest"
+                            )
                         if not ok and current_frame not in wanted:
                             # Preserve a failure marker for every requested frame after decode stops.
                             missing = [index for index in chosen if index >= current_frame]
                             for missing_index in missing:
-                                append_jsonl(frames_out, {
+                                _append_jsonl_budgeted(frames_out, {
                                     "sample_id": f"{identifier}_f{missing_index:09d}",
                                     "video_sample_id": identifier,
                                     "dataset_name": dataset_name,
@@ -366,7 +451,7 @@ def process_video_directory(
                                     "output_path": None,
                                     "preprocessing_status": "decode_error",
                                     "error_code": "stream_ended_before_sample",
-                                })
+                                }, active_budget, usage, "writing the frame manifest")
                                 record["decode_failure_count"] += 1
                                 stats["frame_errors"] += 1
                             break
@@ -374,19 +459,23 @@ def process_video_directory(
                 finally:
                     capture.release()
                 record["preprocessing_status"] = (
-                    "processed" if record["extracted_frame_count"] else "error"
+                    "processed" if record["extracted_frame_count"] else (
+                        "sampled_metadata_only" if record["sampled_frame_count"] else "error"
+                    )
                 )
                 if record["decode_failure_count"]:
                     record["error_code"] = "one_or_more_frame_failures"
                 stats["videos"] += 1
             except FileExistsError:
                 raise
+            except StorageBudgetExceeded:
+                raise
             except Exception as exc:
                 record["preprocessing_status"] = "corrupt" if isinstance(exc, (ValueError, cv2.error)) else "error"
                 record["error_code"] = str(exc)[:160]
                 stats["video_errors"] += 1
                 log_file_error(LOGGER, "video", relative, exc)
-            append_jsonl(video_out, record)
+            _append_jsonl_budgeted(video_out, record, active_budget, usage, "writing the video manifest")
     if hasattr(annotations, "close"):
         annotations.close()
     return stats
@@ -407,6 +496,7 @@ def main() -> None:
     parser.add_argument("--label", default="UNKNOWN")
     parser.add_argument("--annotations", type=Path)
     parser.add_argument("--config", type=Path)
+    parser.add_argument("--data-root", type=Path)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     print(process_video_directory(
@@ -414,6 +504,7 @@ def main() -> None:
         dataset_version=args.dataset_version, source_url=args.source_url,
         dataset_license=args.dataset_license, citation=args.citation,
         default_label=args.label, annotations_path=args.annotations, config_path=args.config,
+        budget=VideoStorageBudget(root=args.data_root) if args.data_root else None,
     ))
 
 

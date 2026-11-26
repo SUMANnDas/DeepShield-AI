@@ -111,22 +111,30 @@ class VideoStorageBudget:
         if os.name == "nt" and root.drive.upper() not in {"C:", "D:"}:
             raise ValueError("video data must be stored on C: or D:")
 
-    def report(self, planned_bytes: int = 0) -> StorageReport:
+    def report(self, planned_bytes: int = 0, *, current_bytes: int | None = None) -> StorageReport:
         if planned_bytes < 0:
             raise ValueError("planned_bytes cannot be negative")
+        if current_bytes is not None and current_bytes < 0:
+            raise ValueError("current_bytes cannot be negative")
         anchor = _existing_volume_path(self.root)
         return StorageReport(
             root=self.root,
-            current_bytes=directory_size(self.root),
+            current_bytes=directory_size(self.root) if current_bytes is None else current_bytes,
             planned_bytes=planned_bytes,
             hard_limit_bytes=self.hard_limit_bytes,
             free_bytes=shutil.disk_usage(anchor).free,
             minimum_free_bytes=self.minimum_free_bytes,
         )
 
-    def require_capacity(self, planned_bytes: int, *, purpose: str) -> StorageReport:
+    def require_capacity(
+        self,
+        planned_bytes: int,
+        *,
+        purpose: str,
+        current_bytes: int | None = None,
+    ) -> StorageReport:
         """Fail before a write if quota or the drive free-space reserve is exceeded."""
-        report = self.report(planned_bytes)
+        report = self.report(planned_bytes, current_bytes=current_bytes)
         if report.after_write_bytes > self.hard_limit_bytes:
             raise StorageBudgetExceeded(
                 f"{purpose} would use {report.after_write_bytes / GB:.2f} GB, "
@@ -139,13 +147,18 @@ class VideoStorageBudget:
             )
         return report
 
-    def validate_destination(self, destination: str | Path) -> Path:
-        """Require a new output path to remain under the budgeted root."""
-        path = Path(destination).expanduser().resolve()
+    def validate_location(self, location: str | Path) -> Path:
+        """Require a path, existing or new, to remain under the budgeted root."""
+        path = Path(location).expanduser().resolve()
         try:
             path.relative_to(self.root)
         except ValueError as error:
             raise ValueError("video data and experiment outputs must stay under the budget root") from error
+        return path
+
+    def validate_destination(self, destination: str | Path) -> Path:
+        """Require a new output path to remain under the budgeted root."""
+        path = self.validate_location(destination)
         if path.exists():
             raise FileExistsError(f"Refusing to overwrite existing video artifact: {path}")
         return path

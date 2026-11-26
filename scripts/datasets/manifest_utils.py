@@ -35,13 +35,24 @@ def canonical_label(value: Any) -> str:
 class AnnotationStore:
     """Disk-backed annotation lookup so large source label files stay out of RAM."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, max_bytes: int | None = None) -> None:
+        if max_bytes is not None and max_bytes < 4096:
+            raise ValueError("max_bytes must allow at least one 4096-byte SQLite page")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(path)
-        self.connection.execute(
-            "CREATE TABLE annotations (key TEXT PRIMARY KEY, basename TEXT NOT NULL, row_json TEXT NOT NULL)"
-        )
-        self.connection.execute("CREATE INDEX annotations_basename_idx ON annotations(basename)")
+        try:
+            if max_bytes is not None:
+                self.connection.execute("PRAGMA page_size=4096")
+                self.connection.execute("PRAGMA journal_mode=MEMORY")
+                max_pages = max_bytes // 4096
+                self.connection.execute(f"PRAGMA max_page_count={max_pages}")
+            self.connection.execute(
+                "CREATE TABLE annotations (key TEXT PRIMARY KEY, basename TEXT NOT NULL, row_json TEXT NOT NULL)"
+            )
+            self.connection.execute("CREATE INDEX annotations_basename_idx ON annotations(basename)")
+        except BaseException:
+            self.connection.close()
+            raise
 
     def __enter__(self) -> "AnnotationStore":
         return self
@@ -79,7 +90,12 @@ class AnnotationStore:
         self.connection.close()
 
 
-def load_annotations(path: Path | None, index_path: Path | None = None) -> AnnotationStore | dict[str, dict[str, Any]]:
+def load_annotations(
+    path: Path | None,
+    index_path: Path | None = None,
+    *,
+    index_max_bytes: int | None = None,
+) -> AnnotationStore | dict[str, dict[str, Any]]:
     """Index CSV/JSONL annotations on disk; JSON arrays are accepted for small sidecars."""
     if path is None:
         return {}
@@ -125,7 +141,7 @@ def load_annotations(path: Path | None, index_path: Path | None = None) -> Annot
         return index
 
     refuse_existing(index_path)
-    store = AnnotationStore(index_path)
+    store = AnnotationStore(index_path, max_bytes=index_max_bytes)
     try:
         for row in records:
             store.add(row)

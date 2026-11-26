@@ -1,7 +1,7 @@
 {
   "video_extensions": [".mp4", ".avi", ".mov", ".mkv", ".webm"],
   "sampling_strategy": "uniform",
-  "max_frames": 24,
+  "max_frames": 12,
   "scene_probe_stride": 5,
   "scene_change_threshold": 0.18,
   "face_probe_stride": 5,
@@ -9,5 +9,6 @@
   "face_min_size": 32,
   "face_scale_factor": 1.1,
   "face_min_neighbors": 5,
-  "jpeg_quality": 95
+  "jpeg_quality": 95,
+  "persist_frames": false
 }
