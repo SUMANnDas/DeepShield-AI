@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,61 @@ def _gradcam_layer(model: torch.nn.Module, architecture: str) -> torch.nn.Module
     if key == "efficientnet-b0":
         return model.features[-1]
     raise ValueError(f"No CNN Grad-CAM target configured for {architecture}")
+
+
+def _encode_rgb_png_base64(image_rgb: np.ndarray, *, preview_size: int = 192) -> str:
+    upscaled = cv2.resize(image_rgb, (preview_size, preview_size), interpolation=cv2.INTER_NEAREST)
+    ok, encoded = cv2.imencode(".png", cv2.cvtColor(upscaled, cv2.COLOR_RGB2BGR))
+    if not ok:
+        raise RuntimeError("Failed to encode explainability preview PNG")
+    return base64.b64encode(encoded.tobytes()).decode("ascii")
+
+
+def explain_prepared_image(
+    model: torch.nn.Module,
+    architecture: str,
+    rgb_32x32: np.ndarray,
+    tensor: torch.Tensor,
+    *,
+    class_index: int | None = None,
+    preview_size: int = 192,
+) -> dict[str, Any]:
+    """Generate native 32x32 Grad-CAM or ViT patch attribution for a single input."""
+    key = architecture.strip().lower().replace("_", "-")
+    if tensor.ndim != 4 or tensor.shape[0] != 1 or tensor.shape[-2:] != (32, 32):
+        raise ValueError("Expected tensor shape (1, C, 32, 32)")
+    if rgb_32x32.shape != (32, 32, 3):
+        raise ValueError("Expected rgb_32x32 shape (32, 32, 3)")
+    if class_index is None:
+        with torch.inference_mode():
+            selected = int(model(tensor).argmax(dim=1).item())
+    else:
+        selected = int(class_index)
+
+    if key in {"vit-small", "vit"}:
+        attribution = vit_patch_attribution(model, tensor, class_index=selected)
+        expanded = cv2.resize(attribution, (32, 32), interpolation=cv2.INTER_CUBIC)
+        overlay = make_overlay(rgb_32x32, expanded)
+        kind = "vit_patch_gradient_input"
+        method_label = "ViT patch gradient × input (8×8 patches)"
+        grid_shape = [int(attribution.shape[0]), int(attribution.shape[1])]
+    else:
+        attribution = gradcam(model, tensor, _gradcam_layer(model, key), class_index=selected)
+        overlay = make_overlay(rgb_32x32, attribution)
+        kind = "gradcam"
+        method_label = "Grad-CAM (final convolutional block)"
+        grid_shape = [int(attribution.shape[0]), int(attribution.shape[1])]
+
+    return {
+        "method": kind,
+        "method_label": method_label,
+        "target_class": "FAKE" if selected == 1 else "REAL",
+        "resolution": [32, 32],
+        "grid_shape": grid_shape,
+        "model_input_png_base64": _encode_rgb_png_base64(rgb_32x32, preview_size=preview_size),
+        "overlay_png_base64": _encode_rgb_png_base64(overlay, preview_size=preview_size),
+        "limitation": "Coarse 32x32 visual attribution highlights regions influencing the raw score; it is not causal forensic proof.",
+    }
 
 
 def explain_validation_examples(config_path: Path, run_dir: Path, *, examples_per_class: int = 2) -> Path:

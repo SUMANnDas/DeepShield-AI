@@ -56,3 +56,25 @@ class ApplicationApiTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/v1/history').json()['total'],0)
         self.assertEqual(directory_size(self.app.state.video_storage_budget.root),0)
 
+    def test_video_upload_returns_prediction_when_validated_model_registered(self):
+        import cv2
+        import numpy as np
+        video_path=Path(self.tmp.name)/'clip.avi'
+        writer=cv2.VideoWriter(str(video_path),cv2.VideoWriter_fourcc(*'MJPG'),10,(64,64))
+        self.assertTrue(writer.isOpened())
+        for _ in range(4):
+            frame=np.zeros((64,64,3),dtype=np.uint8)
+            cv2.circle(frame,(32,32),12,(200,200,200),-1)
+            writer.write(frame)
+        writer.release()
+        fake_models=[{'id':'ffpp-run-1','name':'EfficientNet-B0 + BiGRU','architecture':'efficientnet-b0-bigru-attention','status':'available'}]
+        fake_detect={'status':'ok','model_id':'ffpp-run-1','model_identifier':'efficientnet-b0-bigru-attention:ffpp-run-1:epoch-4','device':'cpu','inference_duration_ms':12.3,'report':{'prediction':'MANIPULATED','probability_manipulated':0.88,'frame_evidence':[{'frame_index':0,'timestamp_seconds':0.0,'probability_manipulated':0.88,'suspicious':True}],'preprocessing':{'size':224}}}
+        with patch('backend.app.api.routes.application.list_video_models',return_value=fake_models), patch('backend.app.api.routes.application.get_video_model',return_value=fake_models[0]), patch('backend.app.api.routes.application.video_service.detect',return_value=fake_detect):
+            response=self.client.post('/api/v1/analysis/videos',data={'model_id':'ffpp-run-1'},files={'file':('clip.avi',video_path.read_bytes(),'video/x-msvideo')})
+        self.assertEqual(response.status_code,200,response.text)
+        body=response.json()
+        self.assertTrue(body['prediction_available'])
+        self.assertEqual(body['status'],'complete')
+        self.assertEqual(body['result']['prediction'],'MANIPULATED')
+        self.assertEqual(directory_size(self.app.state.video_storage_budget.root),0)
+

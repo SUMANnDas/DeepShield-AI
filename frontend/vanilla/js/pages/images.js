@@ -14,6 +14,34 @@ function probabilityRow(label, value, style = '') {
   )
 }
 
+function attributionPanel(explainability) {
+  if (!explainability || !explainability.overlay_png_base64) return null
+  const inputTile = explainability.model_input_png_base64
+    ? el('div', { className: 'attribution-tile' },
+        el('img', {
+          src: `data:image/png;base64,${explainability.model_input_png_base64}`,
+          alt: 'Prepared 32 by 32 model input',
+        }),
+        el('small', {}, 'Prepared 32 × 32 input'),
+      )
+    : null
+  const overlayTile = el('div', { className: 'attribution-tile' },
+    el('img', {
+      src: `data:image/png;base64,${explainability.overlay_png_base64}`,
+      alt: `${explainability.method_label || 'Attribution'} overlay`,
+    }),
+    el('small', {}, `${explainability.method_label || 'Attribution'} · target ${explainability.target_class || '—'}`),
+  )
+  return el('div', { className: 'attribution-panel' },
+    el('div', { className: 'section-heading' },
+      el('h2', {}, 'Visual attribution'),
+      el('span', { className: 'badge badge-blue' }, explainability.method === 'vit_patch_gradient_input' ? 'ViT patch gradient' : 'Grad-CAM'),
+    ),
+    el('div', { className: 'attribution-grid' }, inputTile, overlayTile),
+    el('p', { className: 'help-text' }, explainability.limitation || 'Visual attribution is coarse at 32 × 32 and is not causal forensic proof.'),
+  )
+}
+
 function resultCard(record, api) {
   const result = record.result || {}
   const assessment = result.assessment || { status: 'inconclusive', decision: 'INCONCLUSIVE', raw_model_label: result.predicted_label, reason: 'This result predates the resolution-domain assessment.' }
@@ -25,6 +53,7 @@ function resultCard(record, api) {
     probabilityRow('REAL score', result.real_probability),
     probabilityRow('FAKE score', result.fake_probability, 'fake'),
     el('p', { className: 'help-text' }, 'Scores are uncalibrated model outputs, not forensic confidence. This checkpoint was trained on CIFAKE v3.'),
+    attributionPanel(result.explainability),
     el('dl', { className: 'detail-list' },
       el('div', {}, el('dt', {}, 'Model checkpoint'), el('dd', {}, result.model_identifier || 'Not returned')),
       el('div', {}, el('dt', {}, 'Runtime device'), el('dd', {}, result.device || 'Not returned')),

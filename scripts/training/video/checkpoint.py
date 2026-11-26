@@ -45,27 +45,32 @@ class _BudgetedWriter:
             raise OSError("budgeted checkpoint writer does not allow rewriting earlier bytes")
         return position
 
-def save_checkpoint(path,model,optimizer=None,epoch=0,config=None,budget=None):
+def save_checkpoint(path, model, optimizer=None, epoch=0, config=None, budget=None, extra=None):
     active_budget = budget or VideoStorageBudget()
     p = active_budget.validate_destination(Path(path))
     p.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict() if optimizer else None,
+        'epoch': epoch,
+        'config': config,
+    }
+    if extra:
+        payload.update(extra)
     with p.open('xb') as handle:
         writer = _BudgetedWriter(handle, active_budget)
         try:
-            torch.save(
-                {
-                    'model': model.state_dict(),
-                    'optimizer': optimizer.state_dict() if optimizer else None,
-                    'epoch': epoch,
-                    'config': config,
-                },
-                writer,
-            )
+            torch.save(payload, writer)
         except BaseException:
             if writer.quota_error is not None:
                 raise writer.quota_error
             raise
-def load_checkpoint(path,model,optimizer=None,map_location='cpu'):
-    state=torch.load(path,map_location=map_location,weights_only=False);model.load_state_dict(state['model'])
-    if optimizer and state.get('optimizer'):optimizer.load_state_dict(state['optimizer'])
+
+
+def load_checkpoint(path, model=None, optimizer=None, map_location='cpu'):
+    state = torch.load(path, map_location=map_location, weights_only=False)
+    if model is not None:
+        model.load_state_dict(state['model'])
+    if optimizer and state.get('optimizer'):
+        optimizer.load_state_dict(state['optimizer'])
     return state

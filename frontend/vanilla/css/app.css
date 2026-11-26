@@ -218,6 +218,14 @@ img, video { max-width: 100%; }
 .frame-card { min-width: 0; padding: 8px; background: var(--surface-quiet); border: 1px solid var(--border); border-radius: 9px; }
 .frame-card img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #e9ece8; border-radius: 6px; }
 .frame-card small { display: block; padding: 7px 2px 1px; color: var(--text-soft); font-size: 10px; }
+.frame-score-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 6px; }
+.frame-score-row strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+.attribution-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.attribution-panel .section-heading { margin: 0 0 10px; align-items: center; }
+.attribution-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+.attribution-tile { padding: 8px; background: var(--surface-quiet); border: 1px solid var(--border); border-radius: 9px; text-align: center; }
+.attribution-tile img { display: block; width: 100%; max-width: 192px; aspect-ratio: 1 / 1; margin: 0 auto; object-fit: contain; image-rendering: pixelated; border-radius: 6px; background: #e9ece8; }
+.attribution-tile small { display: block; margin-top: 6px; color: var(--text-soft); font-size: 10.5px; }
 .matrix { display: grid; grid-template-columns: minmax(95px, 1.2fr) repeat(2, minmax(75px, 1fr)); gap: 5px; max-width: 520px; margin: 10px 0 18px; }
 .matrix-head, .matrix-value { display: grid; place-items: center; min-height: 42px; padding: 7px; border-radius: 7px; font-size: 11px; text-align: center; }
 .matrix-head { color: var(--text-soft); background: var(--surface-soft); font-weight: 650; }

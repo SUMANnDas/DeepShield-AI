@@ -14,10 +14,11 @@ def preprocess_video(path,detector=None,max_frames=12,max_crops=12,size=224,padd
         ds=detector.detect(f['frame'],f['frame_index'],f['timestamp_seconds']) if f['decode_ok'] else []
         detections.append(ds)
     tracks=associate_faces(detections); selected={}
+    tracks_map=_tracks_by_id(tracks)
     # Main subject: most temporally persistent track; ties favor total face area.
     for item in tracks:
         d=item['detection']; area=d.bbox[2]*d.bbox[3]
-        score=(len(next(t for tid,t in _tracks_by_id(tracks).items() if tid==item['track_id'])),area)
+        score=(len(tracks_map[item['track_id']]),area)
         if item['track_id'] not in selected or score>selected[item['track_id']]['score']:
             selected[item['track_id']]={'score':score,'item':item}
     if selected:

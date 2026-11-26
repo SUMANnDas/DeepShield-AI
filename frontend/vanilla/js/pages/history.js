@@ -5,15 +5,17 @@ const PAGE_SIZE = 20
 function safeRecord(value) {
   if (Array.isArray(value)) return value.map((item) => safeRecord(item))
   if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-    key,
-    /path/i.test(key) ? '[omitted]' : safeRecord(item),
-  ]))
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (/path/i.test(key)) return [key, '[omitted]']
+    if (/_base64$/i.test(key) && typeof item === 'string') return [key, `[base64 image omitted · ${item.length} chars]`]
+    return [key, safeRecord(item)]
+  }))
 }
 
 function recordResult(item) {
   return item.result?.assessment?.decision
     || item.result?.predicted_label
+    || item.result?.prediction
     || (item.result?.prediction_available === false ? 'Metadata only' : 'Not returned')
 }
 

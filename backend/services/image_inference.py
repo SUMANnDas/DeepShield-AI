@@ -13,6 +13,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from scripts.training.image.checkpoint import load_checkpoint
 from scripts.training.image.data import INDEX_TO_LABEL
+from scripts.training.image.explain import explain_prepared_image
 from scripts.training.image.models import build_model
 from scripts.training.image.preprocessing import prepare_model_rgb
 from scripts.training.image.transforms import ImageTransform
@@ -36,6 +37,7 @@ class ImageInferenceService:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._loaded_id: str | None = None
+        self._architecture: str | None = None
         self._model: torch.nn.Module | None = None
         self._transform: ImageTransform | None = None
         self._device = torch.device("cpu")
@@ -124,12 +126,13 @@ class ImageInferenceService:
         self._transform = ImageTransform(norm["mean"], norm["std"], training=False)
         self._device = device
         self._loaded_id = model_id
+        self._architecture = str(config["architecture"])
         self._identifier = f"{config['architecture']}:{MODELS[model_id]['run_id']}:epoch-{checkpoint['epoch']}"
 
-    def predict(self, model_id: str, image: Image.Image) -> dict[str, Any]:
+    def predict(self, model_id: str, image: Image.Image, *, include_explainability: bool = True) -> dict[str, Any]:
         with self._lock:
             self._load(model_id)
-            assert self._model is not None and self._transform is not None
+            assert self._model is not None and self._transform is not None and self._architecture is not None
             width, height = image.size
             assert self._transform is not None
             mean_rgb = tuple(round(float(value) * 255) for value in self._transform.mean.flatten().tolist())
@@ -141,7 +144,19 @@ class ImageInferenceService:
                 if self._device.type == "cuda":
                     torch.cuda.synchronize(self._device)
             elapsed = (time.perf_counter() - start) * 1000
-            predicted_label = INDEX_TO_LABEL[int(probs.argmax().item())]
+            predicted_index = int(probs.argmax().item())
+            predicted_label = INDEX_TO_LABEL[predicted_index]
+            explainability = (
+                explain_prepared_image(
+                    self._model,
+                    self._architecture,
+                    array,
+                    tensor,
+                    class_index=predicted_index,
+                )
+                if include_explainability
+                else None
+            )
             native_resolution = (width, height) == (32, 32)
             assessment = {
                 "status": "model_indication" if native_resolution else "inconclusive",
@@ -154,7 +169,7 @@ class ImageInferenceService:
                     else "The source image is not 32x32. Its resized model score is outside the validated CIFAKE resolution domain."
                 ),
             }
-            return {
+            payload = {
                 "predicted_label": predicted_label,
                 "real_probability": float(probs[0].item()),
                 "fake_probability": float(probs[1].item()),
@@ -173,4 +188,7 @@ class ImageInferenceService:
                     "resolution_matches_training": native_resolution,
                 },
             }
+            if explainability is not None:
+                payload["explainability"] = explainability
+            return payload
 

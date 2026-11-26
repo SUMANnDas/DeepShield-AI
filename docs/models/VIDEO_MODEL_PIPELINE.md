@@ -4,7 +4,7 @@
 
 The first video task is visual facial manipulation detection in videos. It is distinct from CIFAKE's 32×32 AI-generated image classification and does not claim to detect arbitrary AI-generated video or audio deepfakes.
 
-The repository has model and preprocessing code, but no real video dataset has been acquired and no trained video checkpoint is registered. The application therefore continues to return metadata-only inspection for uploads; it must not emit a deepfake prediction until an approved real-data checkpoint is trained and validated.
+Two scratch-trained models on a double-disjoint 1,200-video subset of `RealTimeFaceSwap-10k` (`CC BY-SA 4.0`) are now registered under `DEEPSHIELD_VIDEO_DATA_ROOT` (`C:\Users\User\DeepShield-Data\VideoDetection`), activating live bounded video classification in `/api/v1/analysis/videos` and the Video Analysis UI. FaceForensics++ c23 acquisition remains optional and separately gated via `scripts/datasets/ffpp_c23.py`.
 
 ## Manifest to training contract
 
@@ -27,3 +27,17 @@ All backbones currently use `weights=None`; this work has not downloaded pretrai
 Video inputs, manifests, sampled-frame outputs, annotation indexes, run configurations, and checkpoints must remain under `DEEPSHIELD_VIDEO_DATA_ROOT` (default `C:\Users\User\DeepShield-Data\VideoDetection`). Persistent frame output is disabled by default. The budget target is 90 GB, hard limit is 100 GB total, and at least 10 GB must remain free on C:. Retain archives and originals through training. The user plans dataset cleanup after training; cleanup is not automated. A quota failure can leave a partial generated artifact, which is preserved and is not reusable as a checkpoint.
 
 See [VIDEO_STORAGE_BUDGET.md](../datasets/VIDEO_STORAGE_BUDGET.md) for the acquisition envelope and approval gate.
+
+## End-to-end FF++ c23 workflow
+
+Once your official `download-FaceForensics.py` script is ready, run the budgeted sequence from the project root:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.datasets.ffpp_c23 preflight --script path\to\download-FaceForensics.py --all-videos
+.\.venv\Scripts\python.exe -m scripts.datasets.ffpp_c23 download --script path\to\download-FaceForensics.py --all-videos --approved
+.\.venv\Scripts\python.exe -m scripts.datasets.ffpp_c23 prepare --raw-root C:\Users\User\DeepShield-Data\VideoDetection\raw\FaceForensics++-c23 --manifest-dir C:\Users\User\DeepShield-Data\VideoDetection\manifests\ffpp-c23-v1
+.\.venv\Scripts\python.exe -m scripts.training.video.train --config configs\training\video\efficientnet-bigru-8gb.json --train-manifest C:\Users\User\DeepShield-Data\VideoDetection\manifests\ffpp-c23-v1\train.jsonl --val-manifest C:\Users\User\DeepShield-Data\VideoDetection\manifests\ffpp-c23-v1\validation.jsonl --test-manifest C:\Users\User\DeepShield-Data\VideoDetection\manifests\ffpp-c23-v1\test.jsonl --dataset-root C:\Users\User\DeepShield-Data\VideoDetection\raw\FaceForensics++-c23
+.\.venv\Scripts\python.exe -m scripts.training.video.evaluate --config configs\training\video\efficientnet-bigru-8gb.json --run-dir C:\Users\User\DeepShield-Data\VideoDetection\experiments\<run-id> --manifest C:\Users\User\DeepShield-Data\VideoDetection\manifests\ffpp-c23-v1\test.jsonl --dataset-root C:\Users\User\DeepShield-Data\VideoDetection\raw\FaceForensics++-c23
+```
+
+After `evaluate` writes `test-metrics.json`, `backend/services/video_model_registry.py` automatically discovers the validated run and enables real video classification in `/api/v1/analysis/videos`, `/api/v1/performance`, and the Video Analysis UI.

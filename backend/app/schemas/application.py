@@ -19,6 +19,7 @@ class VideoAnalysisResponse(BaseModel):
     status: str
     prediction_available: bool = False
     limitation: str
+    result: dict[str, Any] | None = None
     metadata: dict[str, Any]
     sampled_frames: list[dict[str, Any]] = Field(default_factory=list)
 

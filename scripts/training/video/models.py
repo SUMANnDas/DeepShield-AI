@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 import torch
 from torch import nn
 from torchvision.models import efficientnet_b0
@@ -84,3 +85,41 @@ class EfficientNetTransformerVideoClassifier(nn.Module):
 
     def forward(self, frames, mask):
         return self.temporal(self.encode_frames(frames, mask), mask)
+
+
+def build_video_model(config: dict[str, Any] | str) -> nn.Module:
+    """Instantiate a supported video manipulation architecture with weights=None."""
+    cfg = {"architecture": config} if isinstance(config, str) else dict(config)
+    if cfg.get("weights") is not None:
+        raise ValueError("Pretrained video weights are not enabled; weights must be null")
+    name = str(cfg.get("architecture", "")).strip().lower().replace("_", "-")
+    if name in {"efficientnet-b0-frame", "efficientnet-frame", "frame"}:
+        return EfficientNetFrameClassifier(num_classes=int(cfg.get("num_classes", 2)))
+    if name in {"efficientnet-b0-bigru-attention", "efficientnet-bigru", "bigru"}:
+        return EfficientNetBiGRU(
+            hidden_dim=int(cfg.get("hidden_dim", 256)),
+            layers=int(cfg.get("gru_layers", 2)),
+            dropout=float(cfg.get("dropout", 0.3)),
+            freeze_encoder=bool(cfg.get("freeze_encoder", False)),
+        )
+    if name in {
+        "efficientnet-b0-temporal-transformer",
+        "efficientnet-transformer",
+        "temporal-transformer",
+    }:
+        if name == "temporal-transformer" and "input_dim" in cfg:
+            return TemporalTransformer(
+                dim=int(cfg.get("input_dim", 1280)),
+                max_frames=int(cfg.get("max_frames", 12)),
+                layers=int(cfg.get("layers", cfg.get("transformer_layers", 2))),
+                heads=int(cfg.get("heads", cfg.get("attention_heads", 4))),
+                dropout=float(cfg.get("dropout", 0.1)),
+            )
+        return EfficientNetTransformerVideoClassifier(
+            max_frames=int(cfg.get("max_frames", 12)),
+            layers=int(cfg.get("transformer_layers", cfg.get("layers", 2))),
+            heads=int(cfg.get("attention_heads", cfg.get("heads", 4))),
+            dropout=float(cfg.get("dropout", 0.1)),
+            freeze_encoder=bool(cfg.get("freeze_encoder", False)),
+        )
+    raise ValueError(f"Unsupported video architecture: {cfg.get('architecture')!r}")

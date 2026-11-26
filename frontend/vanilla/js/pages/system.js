@@ -52,6 +52,7 @@ export async function renderSystem(root, { api }) {
               kv('Project volume free', formatBytes(disk.project_root_free_bytes)),
               kv('Project volume total', formatBytes(disk.total_bytes)),
               kv('Image models', (data.image_models_available ?? 0) + ' available'),
+              kv('Video models', (data.video_models_available ?? 0) + ' available'),
               kv('Video prediction', data.video_prediction_status || 'Unavailable'),
             ),
             el('p', { className: 'help-text' }, 'This page reports system values supplied by the backend; it does not expose local filesystem paths.'),

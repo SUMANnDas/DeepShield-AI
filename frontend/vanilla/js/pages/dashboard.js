@@ -6,9 +6,11 @@ export async function renderDashboard(root, { api }) {
   const data = await api.get('/dashboard')
   const counts = data.counts || {}
   const models = data.models || []
+  const videoModels = data.video_models || []
   const system = data.system || {}
   const analyses = Number(counts.image || 0) + Number(counts.video || 0)
   const availableModels = models.filter((model) => model.status === 'available').length
+  const availableVideoModels = videoModels.filter((model) => model.status === 'available').length
   const maxCount = Math.max(Number(counts.image || 0), Number(counts.video || 0), 1)
 
   root.append(pageTitle('Workspace overview', 'Forensics dashboard', 'A live view of local analysis activity and the tools available in this workspace.',
@@ -16,8 +18,8 @@ export async function renderDashboard(root, { api }) {
   root.append(el('section', { className: 'metric-grid', 'aria-label': 'Workspace summary' },
     metricTile('Total analyses', String(analyses), 'Saved in local history'),
     metricTile('Image analyses', String(counts.image || 0), 'CIFAKE image branch'),
-    metricTile('Video analyses', String(counts.video || 0), 'Metadata and sampled frames only'),
-    metricTile('Image models', String(availableModels), 'Available local checkpoints'),
+    metricTile('Video analyses', String(counts.video || 0), availableVideoModels ? 'Trained video checkpoint ready' : 'Metadata and sampled frames only'),
+    metricTile('Registered models', String(availableModels + availableVideoModels), `${availableModels} image · ${availableVideoModels} video checkpoints`),
   ))
 
   const modelCard = card(

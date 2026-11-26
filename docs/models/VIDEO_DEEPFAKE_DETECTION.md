@@ -2,7 +2,14 @@
 
 ## Scope and data status
 
-This branch detects potential facial manipulation in video and is separate from Phase 3 CIFAKE AI-generated still-image classification. FaceForensics++ c23 has **not** been downloaded or processed, and no real-data training or evaluation has occurred. The branch was tested with locally generated synthetic AVI fixtures only. Predictions are model-based forensic indicators, never proof of authenticity.
+This branch detects potential facial manipulation in video and is separate from Phase 3 CIFAKE AI-generated still-image classification. Predictions are model-based forensic indicators, never proof of authenticity.
+
+On 2026-11-26, a 1,200-video double-disjoint subset of `RealTimeFaceSwap-10k` (`stplusplus/rtfs-10k`, `CC BY-SA 4.0`) was acquired via the official Kaggle API into `C:\Users\User\DeepShield-Data\VideoDetection\raw\RealTimeFaceSwap-10k` (`840` train / `180` validation / `180` test; `0` decode errors; `0` cross-split YouTube ID or source-photo overlap). Two scratch-initialized models (`weights=None`, BF16 on RTX 5070 Laptop GPU) were trained and evaluated once on the locked 179-usable-clip held-out test set (`1` real clip had no Haar face track):
+
+- **EfficientNet-B0 Frame Baseline** (`efficientnet-b0-frame-20261126T101514Z-b58150ca`, epoch 13): Accuracy `0.8045`, Precision `0.7311`, Recall `0.9667`, F1 `0.8325`, ROC-AUC `0.8720`, PR-AUC `0.8373`, confusion matrix `[[57, 32], [3, 87]]`; strata detection `100.0%` (`45/45`, AUC `0.9184`) on `inswapper` and `93.33%` (`42/45`, AUC `0.8257`) on `uniface`.
+- **EfficientNet-B0 + BiGRU (Attention)** (`efficientnet-b0-bigru-attention-20261126T094052Z-02645f13`, epoch 13): Accuracy `0.7709`, Precision `0.7248`, Recall `0.8778`, F1 `0.7940`, ROC-AUC `0.8280`, PR-AUC `0.7923`, confusion matrix `[[59, 30], [11, 79]]`; strata detection `91.11%` (`41/45`, AUC `0.8675`) on `inswapper` and `84.44%` (`38/45`, AUC `0.7884`) on `uniface`.
+
+FaceForensics++ c23 remains unacquired pending an authorized download script; its official sources remain documented below.
 
 Official sources to recheck before acquisition: [FaceForensics++ repository](https://github.com/ondyari/FaceForensics), [dataset instructions](https://github.com/ondyari/FaceForensics/blob/master/dataset/README.md), and [terms of service](https://kaldir.vc.in.tum.de/faceforensics/webpage/FaceForensics_TOS.pdf). The user reports provider access is granted and confirmed non-commercial research use. Verify the authorized c23 listing, current terms, exact sizes, destination and free space; obtain separate download approval before downloading. No mirror, scraping, substitute dataset, or external upload is permitted.
 

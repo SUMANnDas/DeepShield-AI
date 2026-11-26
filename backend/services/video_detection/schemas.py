@@ -5,6 +5,7 @@ class FrameEvidence(BaseModel):
     timestamp_seconds:float|None=None
     probability_manipulated:float=Field(ge=0,le=1)
     suspicious:bool
+    heatmap_jpeg_base64:str|None=None
 
 class VideoDetectionResponse(BaseModel):
     video_id:str
