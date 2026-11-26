@@ -35,6 +35,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "video_extensions": [".mp4", ".avi", ".mov", ".mkv", ".webm"],
     "sampling_strategy": "uniform",
     "max_frames": 12,
+    "max_frame_pixels": 16_000_000,
     "scene_probe_stride": 5,
     "scene_change_threshold": 0.18,
     "face_probe_stride": 5,
@@ -281,6 +282,11 @@ def process_video_directory(
                 "source_identity_id": labels.get("identity_id"),
                 "relative_path": relative,
                 "file_hash": None,
+                "file_size_bytes": path.stat().st_size,
+                "container_format": path.suffix.lower().lstrip("."),
+                "codec": None,
+                "audio_present": None,
+                "audio_probe_status": "not_inspected",
                 "label": labels["label"],
                 "original_label": labels["original_label"],
                 "source_split": labels.get("source_split"),
@@ -313,6 +319,11 @@ def process_video_directory(
                 capture.release()
                 if frame_count <= 0 or fps <= 0 or width <= 0 or height <= 0:
                     raise ValueError("invalid_video_metadata")
+                max_frame_pixels = int(config.get("max_frame_pixels", 16_000_000))
+                if max_frame_pixels < 1:
+                    raise ValueError("max_frame_pixels must be positive")
+                if width * height > max_frame_pixels:
+                    raise ValueError("resolution_exceeds_processing_limit")
                 record.update({
                     "duration_seconds": frame_count / fps,
                     "frame_rate": fps,
@@ -320,6 +331,7 @@ def process_video_directory(
                     "width": width,
                     "height": height,
                     "fourcc": fourcc,
+                    "codec": fourcc,
                 })
                 chosen, effective_strategy = _select_indices(
                     path,
@@ -471,7 +483,10 @@ def process_video_directory(
             except StorageBudgetExceeded:
                 raise
             except Exception as exc:
-                record["preprocessing_status"] = "corrupt" if isinstance(exc, (ValueError, cv2.error)) else "error"
+                record["preprocessing_status"] = (
+                    "rejected" if str(exc) == "resolution_exceeds_processing_limit" else
+                    "corrupt" if isinstance(exc, (ValueError, cv2.error)) else "error"
+                )
                 record["error_code"] = str(exc)[:160]
                 stats["video_errors"] += 1
                 log_file_error(LOGGER, "video", relative, exc)

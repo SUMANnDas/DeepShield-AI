@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from backend.app.main import create_app
 from backend.services.analysis_store import AnalysisStore
 from backend.app.api.routes import application as application_routes
+from scripts.training.video.storage_budget import VideoStorageBudget, directory_size
 
 
 class ApplicationIntegrationHardeningTests(unittest.TestCase):
@@ -20,6 +21,11 @@ class ApplicationIntegrationHardeningTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="deepshield-api-test-")
         self.app = create_app()
         self.app.state.analysis_store = AnalysisStore(Path(self.temp_dir.name) / "history.sqlite3")
+        self.app.state.video_storage_budget = VideoStorageBudget(
+            root=Path(self.temp_dir.name) / "video-data",
+            minimum_free_bytes=0,
+            project_root=None,
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
@@ -71,6 +77,7 @@ class ApplicationIntegrationHardeningTests(unittest.TestCase):
         history = self.client.get("/api/v1/history?media_type=video").json()
         self.assertEqual(history["total"], 1)
         self.assertEqual(history["items"][0]["sha256"], record["sha256"])
+        self.assertEqual(directory_size(self.app.state.video_storage_budget.root), 0)
 
     def test_video_duration_limit_rejects_before_frame_sampling(self) -> None:
         metadata = {
@@ -111,6 +118,23 @@ class ApplicationIntegrationHardeningTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 413)
         self.assertIn("200 MB", response.json()["detail"])
+
+    def test_video_upload_obeys_storage_quota_and_cleans_its_temp_file(self) -> None:
+        root = Path(self.temp_dir.name) / "limited-video-data"
+        self.app.state.video_storage_budget = VideoStorageBudget(
+            root=root,
+            hard_limit_bytes=8,
+            target_bytes=8,
+            minimum_free_bytes=0,
+            project_root=None,
+        )
+        response = self.client.post(
+            "/api/v1/analysis/videos",
+            files={"file": ("clip.avi", b"123456789", "video/x-msvideo")},
+        )
+        self.assertEqual(response.status_code, 507)
+        self.assertEqual(directory_size(root), 0)
+        self.assertEqual(self.client.get("/api/v1/history?media_type=video").json()["total"], 0)
 
 
 if __name__ == "__main__":

@@ -23,8 +23,15 @@ class EfficientNetBiGRU(nn.Module):
         if freeze_encoder:
             for p in self.encoder.parameters():p.requires_grad=False
     def encode_frames(self,frames,mask):
-        b,t,c,h,w=frames.shape; flat=frames.reshape(b*t,c,h,w); valid=mask.reshape(-1); out=frames.new_zeros((b*t,1280))
-        if valid.any():out[valid]=self.encoder(flat[valid])
+        b,t,c,h,w=frames.shape
+        flat=frames.reshape(b*t,c,h,w)
+        valid=mask.reshape(-1)
+        if valid.any():
+            encoded=self.encoder(flat[valid])
+            out=encoded.new_zeros((b*t,1280))
+            out[valid]=encoded
+        else:
+            out=frames.new_zeros((b*t,1280))
         return out.reshape(b,t,1280)
     def forward(self,frames,mask):
         features=self.encode_frames(frames,mask); temporal,_=self.temporal(features); pooled,weights=self.attention(temporal,mask); logits=self.head(self.dropout(pooled)); return {'logits':logits,'frame_scores':torch.sigmoid(self.attention.score(temporal).squeeze(-1)).masked_fill(~mask,0),'attention':weights,'features':temporal}
@@ -33,6 +40,8 @@ class TemporalTransformer(nn.Module):
     def __init__(self,dim=1280,max_frames=12,layers=2,heads=4,dropout=.1):
         super().__init__(); self.position=nn.Parameter(torch.zeros(1,max_frames,dim)); layer=nn.TransformerEncoderLayer(dim,heads,dim*2,dropout,batch_first=True,norm_first=True); self.encoder=nn.TransformerEncoder(layer,layers); self.attention=TemporalAttention(dim); self.head=nn.Linear(dim,2)
     def forward(self,features,mask):
+        if features.size(1) > self.position.size(1):
+            raise ValueError(f"sequence length {features.size(1)} exceeds configured maximum {self.position.size(1)}")
         empty=~mask.any(1)
         safe_mask=mask.clone()
         safe_mask[empty,0]=True
@@ -41,3 +50,37 @@ class TemporalTransformer(nn.Module):
         pooled,weights=self.attention(x,mask)
         logits=self.head(pooled).masked_fill(empty[:,None],0.)
         return {'logits':logits,'frame_scores':torch.sigmoid(x.mean(-1)).masked_fill(~mask,0),'attention':weights,'features':x}
+
+
+class EfficientNetTransformerVideoClassifier(nn.Module):
+    """EfficientNet frame features followed by masked temporal attention."""
+
+    def __init__(self, max_frames=12, layers=2, heads=4, dropout=0.1, freeze_encoder=False):
+        super().__init__()
+        self.encoder = efficientnet_b0(weights=None)
+        self.encoder.classifier = nn.Identity()
+        self.temporal = TemporalTransformer(
+            dim=1280,
+            max_frames=max_frames,
+            layers=layers,
+            heads=heads,
+            dropout=dropout,
+        )
+        if freeze_encoder:
+            for parameter in self.encoder.parameters():
+                parameter.requires_grad = False
+
+    def encode_frames(self, frames, mask):
+        batch, steps, channels, height, width = frames.shape
+        flat = frames.reshape(batch * steps, channels, height, width)
+        valid = mask.reshape(-1)
+        if valid.any():
+            encoded = self.encoder(flat[valid])
+            features = encoded.new_zeros((batch * steps, 1280))
+            features[valid] = encoded
+        else:
+            features = frames.new_zeros((batch * steps, 1280))
+        return features.reshape(batch, steps, 1280)
+
+    def forward(self, frames, mask):
+        return self.temporal(self.encode_frames(frames, mask), mask)

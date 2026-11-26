@@ -10,6 +10,7 @@ from PIL import Image
 from backend.app.main import create_app
 from backend.services.analysis_store import AnalysisStore
 from backend.services.image_inference import ImageInferenceService
+from scripts.training.video.storage_budget import VideoStorageBudget, directory_size
 
 
 class ApplicationApiTests(unittest.TestCase):
@@ -17,6 +18,9 @@ class ApplicationApiTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory()
         self.app=create_app()
         self.app.state.analysis_store=AnalysisStore(Path(self.tmp.name)/'test.sqlite3')
+        self.app.state.video_storage_budget=VideoStorageBudget(
+            root=Path(self.tmp.name)/'video-data', minimum_free_bytes=0, project_root=None,
+        )
         self.client=TestClient(self.app)
 
     def tearDown(self):
@@ -50,4 +54,5 @@ class ApplicationApiTests(unittest.TestCase):
         response=self.client.post('/api/v1/analysis/videos',files={'file':('fixture.mp4',b'bad','video/mp4')})
         self.assertEqual(response.status_code,415)
         self.assertEqual(self.client.get('/api/v1/history').json()['total'],0)
+        self.assertEqual(directory_size(self.app.state.video_storage_budget.root),0)
 

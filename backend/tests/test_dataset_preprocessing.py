@@ -184,6 +184,11 @@ class DatasetPreprocessingTests(unittest.TestCase):
         )
         self.assertEqual(stats["videos"], 1)
         self.assertEqual(stats["video_errors"], 0)
+        video_row = next(read_jsonl(manifest))
+        self.assertEqual(video_row["file_size_bytes"], video_path.stat().st_size)
+        self.assertEqual(video_row["container_format"], "avi")
+        self.assertIsNone(video_row["audio_present"])
+        self.assertEqual(video_row["audio_probe_status"], "not_inspected")
         rows = list(read_jsonl(self.root / "videos_frames.jsonl"))
         self.assertEqual(len(rows), 3)
         self.assertEqual([row["frame_number"] for row in rows], [0, 4, 7])
@@ -235,6 +240,35 @@ class DatasetPreprocessingTests(unittest.TestCase):
                 dataset_name="quota-check", config_path=config, budget=limited_budget,
             )
         self.assertLessEqual(directory_size(self.root), limited_budget.hard_limit_bytes)
+
+    def test_video_pipeline_rejects_oversized_frames_from_metadata(self) -> None:
+        source = self.root / "large-frame-video"
+        source.mkdir()
+        video_path = source / "clip.avi"
+        writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"MJPG"), 8.0, (96, 64))
+        if not writer.isOpened():
+            writer.release()
+            self.skipTest("OpenCV MJPG video writer is unavailable in this runtime")
+        for index in range(2):
+            writer.write(np.full((64, 96, 3), index * 50, dtype=np.uint8))
+        writer.release()
+        config = self.root / "large-frame-config.json"
+        self.write_json(config, {
+            "max_frames": 2,
+            "max_frame_pixels": 100,
+            "face_detection_enabled": False,
+        })
+        manifest = self.root / "large-frame.jsonl"
+        stats = process_video_directory(
+            source, self.root / "large-frame-output", manifest,
+            dataset_name="large-frame-fixture", config_path=config,
+            budget=VideoStorageBudget(root=self.root, minimum_free_bytes=0, project_root=None),
+        )
+        row = next(read_jsonl(manifest))
+        self.assertEqual(stats["video_errors"], 1)
+        self.assertEqual(row["preprocessing_status"], "rejected")
+        self.assertEqual(row["error_code"], "resolution_exceeds_processing_limit")
+        self.assertEqual(row["sampled_frame_count"], 0)
 
     def test_group_splits_keep_speakers_together_and_leakage_checker_passes(self) -> None:
         source = self.root / "source.jsonl"

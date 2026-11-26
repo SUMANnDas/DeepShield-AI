@@ -1,0 +1,20 @@
+{
+  "task": "video_temporal_facial_manipulation",
+  "architecture": "efficientnet-b0-temporal-transformer",
+  "spatial_encoder": "torchvision-efficientnet-b0",
+  "temporal_encoder": "masked-transformer",
+  "input_size": 224,
+  "max_frames": 12,
+  "transformer_layers": 2,
+  "attention_heads": 4,
+  "dropout": 0.1,
+  "weights": null,
+  "pretrained_weights_downloaded": false,
+  "seed": 42,
+  "batch_size": 1,
+  "epochs": 20,
+  "learning_rate": 0.0001,
+  "mixed_precision": "bf16",
+  "storage_budget_gb": 40,
+  "storage_target_gb": 30
+}

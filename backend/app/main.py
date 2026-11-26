@@ -17,6 +17,7 @@ from backend.app import __version__
 from backend.app.api.router import build_api_router
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.logging_config import configure_logging
+from backend.app.core.video_upload_limits import VideoUploadLimitMiddleware
 
 logger = logging.getLogger(__name__)
 VANILLA_FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "vanilla"
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = app_settings
+    application.add_middleware(VideoUploadLimitMiddleware)
 
     # The framework-free frontend is the primary local interface. Serving it
     # from FastAPI keeps the default launch workflow same-origin and simple.

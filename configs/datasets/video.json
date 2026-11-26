@@ -2,6 +2,7 @@
   "video_extensions": [".mp4", ".avi", ".mov", ".mkv", ".webm"],
   "sampling_strategy": "uniform",
   "max_frames": 12,
+  "max_frame_pixels": 16000000,
   "scene_probe_stride": 5,
   "scene_change_threshold": 0.18,
   "face_probe_stride": 5,

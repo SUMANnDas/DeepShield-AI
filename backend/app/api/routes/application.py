@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import html
@@ -22,6 +21,7 @@ from backend.services.image_inference import ImageInferenceService, ImageInputEr
 from backend.services.model_registry import get_model, list_models
 from backend.services.system_status import system_status
 from scripts.training.video.frame_sampling import sample_video
+from scripts.training.video.storage_budget import StorageBudgetExceeded, VideoStorageBudget
 from scripts.training.video.video_metadata import inspect_video
 
 router = APIRouter(tags=["application"])
@@ -42,6 +42,11 @@ def _store(request: Request) -> AnalysisStore:
 def _safe_filename(value: str | None) -> str:
     name = Path(value or "upload").name.replace("\x00", "")
     return name[:180] or "upload"
+
+
+def _video_budget(request: Request) -> VideoStorageBudget:
+    configured = getattr(request.app.state, "video_storage_budget", None)
+    return configured if configured is not None else VideoStorageBudget()
 
 @router.get("/system")
 def get_system_status():
@@ -119,17 +124,30 @@ async def analyze_video(request: Request, file: UploadFile = File(...)):
     filename = _safe_filename(file.filename)
     if Path(filename).suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(status_code=415, detail="Use an MP4, AVI, MOV, MKV, or WebM video.")
+    return await _process_video_upload(request, file, filename)
 
+
+async def _process_video_upload(request: Request, file: UploadFile, filename: str):
     temp_path = None
     file_size = 0
     digest = hashlib.sha256()
+    budget = _video_budget(request)
     try:
+        try:
+            budget.require_capacity(0, purpose="starting video upload")
+        except StorageBudgetExceeded as exc:
+            raise HTTPException(status_code=507, detail="Video storage budget or free-space reserve is exhausted.") from exc
+        temp_dir = budget.validate_location(budget.root / "inference-tmp")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        used_bytes = budget.report().current_bytes
         with tempfile.NamedTemporaryFile(
             prefix="deepshield-video-",
             suffix=Path(filename).suffix.lower(),
             delete=False,
+            dir=temp_dir,
         ) as handle:
             temp_path = handle.name
+            budget.validate_location(temp_path)
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
@@ -137,8 +155,20 @@ async def analyze_video(request: Request, file: UploadFile = File(...)):
                 file_size += len(chunk)
                 if file_size > MAX_VIDEO_BYTES:
                     raise HTTPException(status_code=413, detail="Video exceeds the 200 MB upload limit.")
+                try:
+                    budget.require_capacity(
+                        len(chunk),
+                        purpose="staging a video upload",
+                        current_bytes=used_bytes,
+                    )
+                except StorageBudgetExceeded as exc:
+                    raise HTTPException(
+                        status_code=507,
+                        detail="Video upload exceeds the configured storage budget or free-space reserve.",
+                    ) from exc
                 digest.update(chunk)
                 handle.write(chunk)
+                used_bytes += len(chunk)
 
         if file_size == 0:
             raise HTTPException(status_code=400, detail="The uploaded file is empty.")

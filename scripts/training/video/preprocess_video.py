@@ -6,8 +6,8 @@ from .face_detection import HaarFaceDetector
 from .face_tracking import associate_faces
 from .face_cropping import crop_face
 
-def preprocess_video(path,detector=None,max_frames=12,max_crops=12,size=224,padding=.15):
-    meta=inspect_video(path)
+def preprocess_video(path,detector=None,max_frames=12,max_crops=12,size=224,padding=.15,max_frame_pixels=16_000_000):
+    meta=inspect_video(path,max_frame_pixels=max_frame_pixels)
     if meta['decode_status']!='ok': return {'metadata':meta,'frames':[],'error':meta['error']}
     sampled=sample_video(str(path),max_frames); detector=detector or HaarFaceDetector(); detections=[]
     for f in sampled:
